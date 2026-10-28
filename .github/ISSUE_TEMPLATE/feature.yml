@@ -1,0 +1,50 @@
+name: 기능 요청
+description: 필요한 기능과 완료 조건을 쉬운 말로 적어 주세요.
+labels: ["기능추가"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        혼자 맡아서 작게 끝내고 확인할 수 있는 기능 하나를 적어 주세요.
+        비밀번호·API 키·개인정보는 본문이나 첨부 자료에 넣지 마세요. 화면에서도 가려 주세요.
+        작성 후 팀에서 담당자 한 명을 정해 이슈의 담당자(Assignees)에 지정해 주세요.
+  - type: textarea
+    id: need
+    attributes:
+      label: 무엇이 불편하거나 필요한가?
+      placeholder: "예: 할 일 목록이 길어서 끝낸 일만 찾기 어려워요."
+    validations:
+      required: true
+  - type: textarea
+    id: desired-behavior
+    attributes:
+      label: 어떻게 동작하면 좋은가?
+      placeholder: "예: '완료한 일만 보기'를 누르면 끝낸 일만 보이면 좋겠어요."
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 어떤 상태가 되면 완료인가?
+      description: 직접 해 보고 맞는지 판단할 수 있는 조건을 적어 주세요.
+      placeholder: |
+        예:
+        - 보기를 켜면 완료한 일만 보여요.
+        - 보기를 끄면 전체 목록이 다시 보여요.
+        - 완료한 일이 없으면 '완료한 일이 없어요'가 보여요.
+    validations:
+      required: true
+  - type: textarea
+    id: reference
+    attributes:
+      label: 참고 화면 또는 예시
+      placeholder: "예: 아래에 그린 화면처럼 목록 위에 보기 버튼이 있으면 좋겠어요. (그림 첨부)"
+    validations:
+      required: false
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: 이번 작업에서 제외할 내용
+      placeholder: "예: 할 일 삭제와 목록 색상 변경은 이번에 하지 않아요."
+    validations:
+      required: false

@@ -1,0 +1,39 @@
+name: 협업 라벨 생성
+
+on:
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+concurrency:
+  group: setup-labels
+  cancel-in-progress: false
+
+jobs:
+  create-labels:
+    name: 버그·기능추가 라벨 준비
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 없는 라벨만 생성
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          existing_labels="$(gh api --paginate "repos/${GH_REPO}/labels" --jq '.[].name')"
+
+          while IFS='|' read -r name color description; do
+            if grep -Fxq -- "$name" <<< "$existing_labels"; then
+              printf '이미 있는 라벨을 보존합니다: %s\n' "$name"
+            else
+              gh label create "$name" --repo "$GH_REPO" --color "$color" --description "$description"
+              printf '라벨을 생성했습니다: %s\n' "$name"
+            fi
+          done <<'LABELS'
+          버그|D73A4A|기대와 다르게 동작하는 문제
+          기능추가|0075CA|새로운 기능이나 기존 기능의 개선 요청
+          LABELS

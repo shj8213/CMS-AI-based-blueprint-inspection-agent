@@ -1,0 +1,58 @@
+name: 버그 신고
+description: 문제가 생기는 순서와 기대한 결과를 적어 주세요.
+labels: ["버그"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        같은 문제를 다른 학생도 따라 해 볼 수 있도록 적어 주세요.
+        비밀번호·API 키·개인정보는 본문이나 첨부 자료에 넣지 마세요. 오류 메시지와 화면에서도 가려 주세요.
+        작성 후 팀에서 담당자 한 명을 정해 이슈의 담당자(Assignees)에 지정해 주세요.
+        기대한 결과는 수정 완료 여부를 확인하는 기준으로 사용해요.
+  - type: textarea
+    id: problem
+    attributes:
+      label: 어떤 문제가 생겼는가?
+      placeholder: "예: 새 할 일을 저장하면 같은 항목이 두 개 생겨요."
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 문제가 생기는 순서
+      placeholder: |
+        예:
+        1. 할 일 목록을 열어요.
+        2. '발표 준비'를 입력해요.
+        3. 저장 버튼을 한 번 눌러요.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 원래 기대한 결과
+      placeholder: "예: '발표 준비'가 목록에 한 개만 추가되어야 해요."
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 실제 결과
+      placeholder: "예: 한 번 눌렀는데 '발표 준비'가 두 개 추가됐어요."
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 실행 환경
+      description: 아는 내용만 적어도 괜찮아요.
+      placeholder: "예: 윈도우 11 노트북, 크롬 브라우저. 휴대폰에서는 아직 확인하지 않았어요."
+    validations:
+      required: false
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 스크린샷 또는 오류 메시지
+      placeholder: "예: 같은 항목이 두 개 보이는 화면을 첨부해요. 오류 메시지는 없었어요."
+    validations:
+      required: false
