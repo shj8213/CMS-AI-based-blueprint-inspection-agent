@@ -1,0 +1,3 @@
+vendor/pdfjs/
+vendor/tesseract/
+__pycache__/

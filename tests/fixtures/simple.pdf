@@ -1,0 +1,70 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 240] /Resources << /Font << /F1 5 0 R >> >> /Contents 6 0 R >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 240] /CropBox [10 20 290 220] /Rotate 90 /Resources << /Font << /F1 5 0 R >> /XObject << /Shape 8 0 R >> >> /Contents 7 0 R >>
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+6 0 obj
+<< /Length 255  >>
+stream
+0.1 0.3 0.8 RG
+20 30 m 140 30 l S
+225 130 m
+225 143.807119 213.807119 155 200 155 c
+186.192881 155 175 143.807119 175 130 c
+175 116.192881 186.192881 105 200 105 c
+213.807119 105 225 116.192881 225 130 c h S
+BT /F1 12 Tf 20 190 Td (Hello blueprint) Tj ET
+
+endstream
+endobj
+7 0 obj
+<< /Length 271  >>
+stream
+q 2 0 0 2 30 40 cm
+5 10 m 15 10 l S
+/Shape Do Q
+q 2 0 0 1 0 0 cm
+110 100 m
+110 105.522847 105.522847 110 100 110 c
+94.477153 110 90 105.522847 90 100 c
+90 94.477153 94.477153 90 100 90 c
+105.522847 90 110 94.477153 110 100 c h S Q
+BT /F1 12 Tf 20 190 Td (Page two) Tj ET
+
+endstream
+endobj
+8 0 obj
+<< /Length 18 /Type /XObject /Subtype /Form /BBox [0 0 100 100] /Matrix [1 0 0 1 5 7] /Resources << >> >>
+stream
+10 10 m 20 10 l S
+
+endstream
+endobj
+xref
+0 9
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000127 00000 n 
+0000000253 00000 n 
+0000000443 00000 n 
+0000000513 00000 n 
+0000000820 00000 n 
+0000001143 00000 n 
+trailer
+<< /Size 9 /Root 1 0 R >>
+startxref
+1300
+%%EOF

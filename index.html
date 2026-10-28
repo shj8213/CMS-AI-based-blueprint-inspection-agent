@@ -290,6 +290,25 @@
         line-height: 1.5;
       }
       .notice[hidden] { display: none; }
+      button:disabled { cursor: not-allowed; }
+      .read-message { margin: 14px 0; color: #334155; font-size: 13px; line-height: 1.7; white-space: pre-line; }
+      .read-message.error { padding: 12px; color: #9c252a; background: #fff0f0; border-radius: 9px; }
+      .read-message:empty { display: none; }
+      .reading-results { margin: 18px 0; }
+      .reading-results p, .reading-results li { font-size: 13px; line-height: 1.7; }
+      .reading-results ul { padding-left: 20px; color: #855b12; }
+      .result-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 14px 0; }
+      select { padding: 7px; border: 1px solid #d5deec; border-radius: 8px; background: #fff; font: inherit; }
+      .table-scroll { overflow: auto; max-height: 420px; }
+      table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; }
+      th, td { padding: 10px; border-bottom: 1px solid #e1e7f0; vertical-align: top; white-space: pre-wrap; overflow-wrap: anywhere; }
+      th { position: sticky; top: 0; background: #f1f4f8; }
+      #drawing-preview { width: 100%; height: 480px; }
+      #drawing-preview text { fill: #172033; stroke: none; }
+      #drawing-preview line, #drawing-preview circle { fill: none; stroke: #245cdb; stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
+      #drawing-preview .uncertain { stroke: #bf7a00; stroke-dasharray: 4 3; }
+      .preview-note { margin: 12px 0 0; color: #68758a; font-size: 12px; line-height: 1.6; }
+      .result-navigation { display: flex; align-items: center; gap: 12px; margin-top: 12px; font-size: 12px; }
 
       @media (max-width: 740px) {
         .page { width: min(100% - 28px, 540px); }
@@ -342,26 +361,54 @@
               >
             </div>
             <div id="file-list" aria-live="polite"></div>
-            <p class="privacy-note">현재는 파일을 전송하거나 분석하지 않아요. 선택한 파일 이름만 이 화면에 표시됩니다.</p>
-            <button class="start-button" id="start-button" type="button" disabled>검도 화면으로 이동</button>
+            <p class="privacy-note">파일은 서버로 보내지 않고 이 브라우저 안에서만 읽어요. 스캔 PDF의 글자는 OCR로 찾으며, 인식 결과는 원본과 비교해 주세요.</p>
+            <p class="privacy-note">확인용 예제 받기: <a href="./tests/fixtures/simple.dxf" download>DXF</a> · <a href="./tests/fixtures/simple.pdf" download>일반 PDF</a> · <a href="./tests/fixtures/scan.pdf" download>스캔 PDF</a></p>
+            <p class="read-message" id="read-progress" role="status"></p>
+            <p class="read-message error" id="read-error" role="alert"></p>
+            <button class="start-button" id="start-button" type="button" disabled>도면 읽기</button>
           </section>
-          <p class="bottom-note">첫 화면 미리보기입니다. 실제 도면 분석과 검도 결과는 아직 연결되지 않았어요.</p>
+          <p class="bottom-note">선·원·글자를 읽는 첫 단계예요. 도면의 정확성 판단·가공방법 추천·수정 기능은 아직 연결되지 않았어요.</p>
         </section>
 
         <section class="screen" id="review-screen" aria-labelledby="result-title" hidden>
           <div class="review-header">
             <div>
-              <h1 id="result-title">도면 작업 결과</h1>
+              <h1 id="result-title" tabindex="-1">도면 읽기 결과</h1>
               <div class="selected-file" id="selected-file-name"></div>
             </div>
             <button class="back-button" id="back-button" type="button">도면 다시 선택</button>
           </div>
 
+          <section class="card reading-results" aria-labelledby="reading-title">
+            <h2 id="reading-title">읽어낸 선·원·글자</h2>
+            <p id="reading-summary"></p>
+            <p id="coordinate-note"></p>
+            <ul id="reading-warnings" aria-label="확인 필요한 내용"></ul>
+            <div class="result-toolbar">
+              <label for="page-select" id="page-label">페이지</label>
+              <select id="page-select"></select>
+              <span id="page-summary" role="status"></span>
+            </div>
+            <div class="table-scroll">
+              <table>
+                <caption class="hidden-input">선·원·글자의 내용과 위치</caption>
+                <thead><tr><th scope="col">종류</th><th scope="col">내용</th><th scope="col">위치</th><th scope="col">상태</th></tr></thead>
+                <tbody id="element-list"></tbody>
+              </table>
+            </div>
+            <div class="result-navigation">
+              <button class="select-button" id="previous-results" type="button">이전 목록</button>
+              <span id="result-range"></span>
+              <button class="select-button" id="next-results" type="button">다음 목록</button>
+            </div>
+          </section>
+
           <div class="review-layout">
-            <section class="card" aria-label="도면 미리보기">
+            <section class="card" aria-label="읽어낸 요소 미리보기">
               <div class="drawing review-drawing">
-                <div class="drawing-caption">도면 미리보기와 검토·수정 표시가 이곳에 나타납니다</div>
+                <svg id="drawing-preview" role="img" aria-label="현재 페이지에서 읽어낸 선·원·글자"></svg>
               </div>
+              <p class="preview-note">읽은 요소만 다시 그린 미리보기예요. 원본의 글꼴·정렬·잘림·숨김 표시는 반영하지 않아요. 노란 점선 원은 곡선에서 추정한 원이에요.</p>
             </section>
 
             <div class="review-side">
@@ -424,113 +471,6 @@
 
     <div class="notice" id="notice" role="status" aria-live="polite" hidden></div>
 
-    <script>
-      const fileInput = document.querySelector("#file-input");
-      const dropArea = document.querySelector("#drop-area");
-      const fileList = document.querySelector("#file-list");
-      const startButton = document.querySelector("#start-button");
-      const uploadScreen = document.querySelector("#upload-screen");
-      const reviewScreen = document.querySelector("#review-screen");
-      const selectedFileName = document.querySelector("#selected-file-name");
-      const notice = document.querySelector("#notice");
-      let chosenFile = null;
-      let noticeTimer;
-
-      function showNotice(message) {
-        notice.textContent = message;
-        notice.hidden = false;
-        window.clearTimeout(noticeTimer);
-        noticeTimer = window.setTimeout(() => {
-          notice.hidden = true;
-        }, 4000);
-      }
-
-      function showFile(file) {
-        const extension = file.name.split(".").pop().toLowerCase();
-        if (extension !== "dxf" && extension !== "pdf") {
-          chosenFile = null;
-          fileInput.value = "";
-          renderFile();
-          showNotice("DXF 또는 PDF 파일을 선택해 주세요.");
-          return;
-        }
-
-        chosenFile = file;
-        renderFile();
-      }
-
-      function renderFile() {
-        fileList.replaceChildren();
-        startButton.disabled = !chosenFile;
-        if (!chosenFile) return;
-
-        const row = document.createElement("div");
-        row.className = "file-row";
-
-        const type = document.createElement("span");
-        type.className = "file-type";
-        type.textContent = chosenFile.name.split(".").pop().toUpperCase();
-
-        const info = document.createElement("div");
-        info.className = "file-info";
-        const name = document.createElement("div");
-        name.className = "file-name";
-        name.textContent = chosenFile.name;
-        const size = document.createElement("div");
-        size.className = "file-size";
-        size.textContent = `파일 크기 ${formatFileSize(chosenFile.size)}`;
-        info.append(name, size);
-
-        const remove = document.createElement("button");
-        remove.className = "remove-button";
-        remove.type = "button";
-        remove.textContent = "×";
-        remove.setAttribute("aria-label", "선택한 파일 지우기");
-        remove.addEventListener("click", () => {
-          chosenFile = null;
-          fileInput.value = "";
-          renderFile();
-        });
-
-        row.append(type, info, remove);
-        fileList.append(row);
-      }
-
-      function formatFileSize(bytes) {
-        if (bytes < 1024) return `${bytes}바이트`;
-        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}킬로바이트`;
-        return `${(bytes / (1024 * 1024)).toFixed(1)}메가바이트`;
-      }
-
-      document.querySelector("#select-button").addEventListener("click", () => fileInput.click());
-      fileInput.addEventListener("change", () => {
-        if (fileInput.files.length > 0) showFile(fileInput.files[0]);
-      });
-
-      dropArea.addEventListener("dragover", (event) => {
-        event.preventDefault();
-        dropArea.classList.add("dragging");
-      });
-      dropArea.addEventListener("dragleave", () => dropArea.classList.remove("dragging"));
-      dropArea.addEventListener("drop", (event) => {
-        event.preventDefault();
-        dropArea.classList.remove("dragging");
-        if (event.dataTransfer.files.length > 0) showFile(event.dataTransfer.files[0]);
-      });
-
-      startButton.addEventListener("click", () => {
-        if (!chosenFile) return;
-        selectedFileName.textContent = `선택한 도면: ${chosenFile.name}`;
-        uploadScreen.hidden = true;
-        reviewScreen.hidden = false;
-        window.scrollTo({ top: 0, behavior: "smooth" });
-      });
-
-      document.querySelector("#back-button").addEventListener("click", () => {
-        reviewScreen.hidden = true;
-        uploadScreen.hidden = false;
-        window.scrollTo({ top: 0, behavior: "smooth" });
-      });
-    </script>
+    <script type="module" src="./src/app.js"></script>
   </body>
 </html>
