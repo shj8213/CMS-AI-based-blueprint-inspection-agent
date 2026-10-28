@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>기계 도면 작업 도우미</title>
+    <style>
+      :root {
+        font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+          "Noto Sans KR", sans-serif;
+        color: #172033;
+        background: #f5f7fb;
+        font-synthesis: none;
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      * { box-sizing: border-box; }
+      body { min-width: 320px; margin: 0; }
+      button, input { font: inherit; }
+      button { cursor: pointer; }
+
+      .page { width: min(1120px, calc(100% - 36px)); margin: 0 auto; }
+      header {
+        min-height: 72px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 1px solid #e1e7f0;
+      }
+      .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; }
+      .brand-icon {
+        display: grid;
+        width: 36px;
+        height: 36px;
+        place-items: center;
+        border-radius: 11px;
+        color: #245cdb;
+        background: #e8efff;
+      }
+      .header-note { color: #6b778c; font-size: 13px; }
+
+      main { padding: 44px 0 56px; }
+      .intro { margin: 0 auto 30px; text-align: center; }
+      .intro-label { color: #245cdb; font-size: 13px; font-weight: 750; }
+      h1 { margin: 12px 0 10px; font-size: clamp(30px, 5vw, 42px); letter-spacing: -1.8px; }
+      .intro p { margin: 0; color: #66738a; line-height: 1.7; }
+
+      .upload-panel { max-width: 700px; margin: 0 auto; }
+      .review-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 18px;
+      }
+      .back-button {
+        padding: 9px 12px;
+        border: 1px solid #d5deec;
+        border-radius: 9px;
+        color: #263650;
+        background: #fff;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .back-button:hover { background: #f3f6fb; }
+      .selected-file { margin-top: 5px; color: #68758a; font-size: 12px; }
+      .review-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.65fr) minmax(280px, 0.85fr);
+        gap: 18px;
+        align-items: start;
+      }
+      .review-drawing { min-height: min(68vh, 680px); }
+      .review-side { padding: 20px; }
+      .review-side .feedback { min-height: 120px; }
+      .workflow-sections { display: grid; gap: 14px; margin-top: 14px; }
+      .workflow-card {
+        padding: 17px;
+        border: 1px solid #e1e7f0;
+        border-radius: 13px;
+        background: #fff;
+      }
+      .workflow-card h2 { font-size: 16px; }
+      .workflow-card .subtext { margin-bottom: 12px; }
+      .workflow-card .feedback { min-height: 0; }
+      .workflow-action {
+        margin-top: 12px;
+        padding: 9px 11px;
+        border: 1px solid #d5deec;
+        border-radius: 9px;
+        color: #53617a;
+        background: #f8faff;
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .workflow-action:disabled { cursor: not-allowed; opacity: .8; }
+      .screen[hidden] { display: none; }
+      .card {
+        min-width: 0;
+        padding: 24px;
+        border: 1px solid #e1e7f0;
+        border-radius: 17px;
+        background: #fff;
+        box-shadow: 0 12px 32px rgb(34 54 88 / 5%);
+      }
+      .heading-row { display: flex; justify-content: space-between; gap: 12px; }
+      h2 { margin: 0; font-size: 19px; letter-spacing: -0.5px; }
+      .subtext { margin: 7px 0 18px; color: #6b778c; font-size: 13px; line-height: 1.6; }
+      .step {
+        align-self: flex-start;
+        padding: 6px 9px;
+        border-radius: 8px;
+        color: #53617a;
+        background: #f1f4f8;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .drop-area {
+        min-height: 210px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        border: 2px dashed #c3cee0;
+        border-radius: 13px;
+        background: #fafcff;
+        text-align: center;
+      }
+      .drop-area.dragging { border-color: #245cdb; background: #f0f5ff; }
+      .upload-icon {
+        display: grid;
+        width: 46px;
+        height: 46px;
+        margin-bottom: 12px;
+        place-items: center;
+        border-radius: 14px;
+        color: #245cdb;
+        background: #e8efff;
+        font-size: 24px;
+      }
+      .drop-title { font-size: 14px; font-weight: 750; }
+      .drop-help { margin: 7px 0 14px; color: #778399; font-size: 12px; }
+      .select-button {
+        padding: 9px 13px;
+        border: 1px solid #d5deec;
+        border-radius: 9px;
+        color: #263650;
+        background: #fff;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .select-button:hover { background: #f3f6fb; }
+      .hidden-input {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        clip-path: inset(50%);
+        white-space: nowrap;
+      }
+
+      .file-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 11px;
+        padding: 10px;
+        border: 1px solid #e1e7f0;
+        border-radius: 10px;
+      }
+      .file-type {
+        display: grid;
+        width: 36px;
+        height: 36px;
+        flex: 0 0 auto;
+        place-items: center;
+        border-radius: 9px;
+        color: #315eb7;
+        background: #edf2ff;
+        font-size: 10px;
+        font-weight: 800;
+      }
+      .file-info { min-width: 0; }
+      .file-name { overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+      .file-size { margin-top: 4px; color: #778399; font-size: 11px; }
+      .remove-button {
+        width: 30px;
+        height: 30px;
+        margin-left: auto;
+        border: 0;
+        border-radius: 8px;
+        color: #65728a;
+        background: transparent;
+        font-size: 18px;
+      }
+      .remove-button:hover { background: #f1f4f8; }
+      .privacy-note { margin: 13px 0 17px; color: #718096; font-size: 11px; line-height: 1.6; }
+      .start-button {
+        width: 100%;
+        min-height: 45px;
+        border: 0;
+        border-radius: 10px;
+        color: #fff;
+        background: #245cdb;
+        font-size: 14px;
+        font-weight: 750;
+      }
+      .start-button:hover:not(:disabled) { background: #1d4fc2; }
+      .start-button:disabled { cursor: not-allowed; background: #b7c5df; }
+
+      .status {
+        align-self: flex-start;
+        padding: 6px 9px;
+        border-radius: 999px;
+        color: #68758a;
+        background: #f1f4f8;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+      .drawing {
+        position: relative;
+        min-height: 220px;
+        display: grid;
+        overflow: hidden;
+        place-items: center;
+        border: 1px solid #e5eaf1;
+        border-radius: 12px;
+        background-color: #fbfcfe;
+        background-image: radial-gradient(#dce4ef 0.8px, transparent 0.8px);
+        background-size: 16px 16px;
+      }
+      .sample-drawing { width: min(70%, 300px); opacity: .58; }
+      .drawing-caption {
+        position: absolute;
+        right: 8px;
+        bottom: 10px;
+        left: 8px;
+        color: #8793a6;
+        font-size: 11px;
+        text-align: center;
+      }
+      .legend { display: flex; flex-wrap: wrap; gap: 10px 15px; margin: 14px 0 17px; }
+      .legend-item { display: inline-flex; align-items: center; gap: 6px; color: #647188; font-size: 11px; }
+      .dot { width: 8px; height: 8px; border-radius: 50%; }
+      .red { background: #e5484d; }
+      .yellow { background: #e5a11a; }
+      .blue { background: #4381e6; }
+      .green { background: #36a269; }
+      .feedback {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 13px;
+        border: 1px solid #edf0f5;
+        border-radius: 11px;
+        background: #fbfcfe;
+      }
+      .info-icon {
+        display: grid;
+        width: 30px;
+        height: 30px;
+        flex: 0 0 auto;
+        place-items: center;
+        border-radius: 9px;
+        color: #5478bb;
+        background: #eef3ff;
+        font-weight: 800;
+      }
+      .feedback strong { font-size: 12px; }
+      .feedback p { margin: 4px 0 0; color: #778399; font-size: 11px; line-height: 1.6; }
+      .bottom-note { margin: 17px 0 0; color: #8490a2; font-size: 11px; line-height: 1.6; text-align: center; }
+      .notice {
+        position: fixed;
+        right: 18px;
+        bottom: 18px;
+        max-width: min(400px, calc(100% - 36px));
+        padding: 12px 15px;
+        border: 1px solid #d9e2f0;
+        border-radius: 11px;
+        background: #fff;
+        box-shadow: 0 10px 28px rgb(26 45 80 / 14%);
+        color: #334155;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .notice[hidden] { display: none; }
+
+      @media (max-width: 740px) {
+        .page { width: min(100% - 28px, 540px); }
+        header { min-height: 62px; }
+        .header-note { max-width: 135px; font-size: 11px; text-align: right; }
+        main { padding: 32px 0 40px; }
+        .intro { margin-bottom: 23px; }
+        .card { padding: 19px; }
+        .review-layout { grid-template-columns: 1fr; gap: 14px; }
+        .review-drawing { min-height: 380px; }
+        .review-header { align-items: flex-start; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header>
+        <div class="brand"><span class="brand-icon" aria-hidden="true">⌁</span>기계 도면 작업 도우미</div>
+        <div class="header-note">검도부터 수정본 제작까지</div>
+      </header>
+
+      <main>
+        <section class="screen" id="upload-screen" aria-labelledby="main-title">
+          <div class="intro">
+            <div class="intro-label">기계 도면 작업 도우미</div>
+            <h1 id="main-title">도면을 올리고 작업을 시작하세요</h1>
+            <p>도면 검토, 가공방법 추천, 수정본 제작을 돕는 화면입니다.</p>
+          </div>
+
+          <section class="card upload-panel" aria-labelledby="upload-title">
+            <div class="heading-row">
+              <div>
+                <h2 id="upload-title">도면 첨부</h2>
+                <p class="subtext">검토할 파일을 선택해 주세요.</p>
+              </div>
+              <span class="step">1단계</span>
+            </div>
+
+            <div class="drop-area" id="drop-area">
+              <div class="upload-icon" aria-hidden="true">↑</div>
+              <div class="drop-title">도면 파일을 여기에 끌어오세요</div>
+              <p class="drop-help">또는 버튼을 눌러 파일을 선택할 수 있어요</p>
+              <button class="select-button" id="select-button" type="button">파일 선택</button>
+              <input
+                class="hidden-input"
+                id="file-input"
+                type="file"
+                accept=".dxf,.pdf,application/pdf"
+                aria-label="DXF 또는 PDF 도면 파일 선택"
+              >
+            </div>
+            <div id="file-list" aria-live="polite"></div>
+            <p class="privacy-note">현재는 파일을 전송하거나 분석하지 않아요. 선택한 파일 이름만 이 화면에 표시됩니다.</p>
+            <button class="start-button" id="start-button" type="button" disabled>검도 화면으로 이동</button>
+          </section>
+          <p class="bottom-note">첫 화면 미리보기입니다. 실제 도면 분석과 검도 결과는 아직 연결되지 않았어요.</p>
+        </section>
+
+        <section class="screen" id="review-screen" aria-labelledby="result-title" hidden>
+          <div class="review-header">
+            <div>
+              <h1 id="result-title">도면 작업 결과</h1>
+              <div class="selected-file" id="selected-file-name"></div>
+            </div>
+            <button class="back-button" id="back-button" type="button">도면 다시 선택</button>
+          </div>
+
+          <div class="review-layout">
+            <section class="card" aria-label="도면 미리보기">
+              <div class="drawing review-drawing">
+                <div class="drawing-caption">도면 미리보기와 검토·수정 표시가 이곳에 나타납니다</div>
+              </div>
+            </section>
+
+            <div class="review-side">
+              <section class="workflow-card" aria-labelledby="feedback-title">
+                <div class="heading-row">
+                  <div>
+                    <h2 id="feedback-title">검도 결과와 피드백</h2>
+                    <p class="subtext">도면에서 확인할 위치와 이유를 살펴봅니다.</p>
+                  </div>
+                  <span class="status">검토 전</span>
+                </div>
+
+                <div class="legend" aria-label="색깔별 검토 결과 안내">
+                  <span class="legend-item"><span class="dot red"></span>오류</span>
+                  <span class="legend-item"><span class="dot yellow"></span>확인 필요</span>
+                  <span class="legend-item"><span class="dot blue"></span>개선 제안</span>
+                  <span class="legend-item"><span class="dot green"></span>정상</span>
+                </div>
+
+                <div class="feedback" aria-live="polite">
+                  <span class="info-icon" aria-hidden="true">안내</span>
+                  <div>
+                    <strong>아직 검도 결과가 없어요</strong>
+                    <p>검도 기능이 연결되면 위치별 문제와 근거, 수정 피드백이 표시됩니다.</p>
+                  </div>
+                </div>
+              </section>
+
+              <div class="workflow-sections">
+                <section class="workflow-card" aria-labelledby="process-title">
+                  <h2 id="process-title">가공방법 추천</h2>
+                  <p class="subtext">도면의 모양과 재료를 바탕으로 만들 방법과 이유를 제안합니다.</p>
+                  <div class="feedback">
+                    <span class="info-icon" aria-hidden="true">안내</span>
+                    <div>
+                      <strong>가공방법 추천 전</strong>
+                      <p>추천 기능이 연결되면 가능한 방법과 선택 근거가 표시됩니다.</p>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="workflow-card" aria-labelledby="edit-title">
+                  <h2 id="edit-title">수정본 만들기</h2>
+                  <p class="subtext">수정 제안을 확인하고 승인한 내용만 원본과 별도의 수정본에 반영합니다.</p>
+                  <div class="feedback">
+                    <span class="info-icon" aria-hidden="true">안내</span>
+                    <div>
+                      <strong>수정 제안 전</strong>
+                      <p>원본 도면은 보존됩니다. 실제 수정 기능은 아직 연결되지 않았습니다.</p>
+                    </div>
+                  </div>
+                  <button class="workflow-action" type="button" disabled>수정 제안·미리보기·승인 기능 준비 중</button>
+                </section>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="notice" id="notice" role="status" aria-live="polite" hidden></div>
+
+    <script>
+      const fileInput = document.querySelector("#file-input");
+      const dropArea = document.querySelector("#drop-area");
+      const fileList = document.querySelector("#file-list");
+      const startButton = document.querySelector("#start-button");
+      const uploadScreen = document.querySelector("#upload-screen");
+      const reviewScreen = document.querySelector("#review-screen");
+      const selectedFileName = document.querySelector("#selected-file-name");
+      const notice = document.querySelector("#notice");
+      let chosenFile = null;
+      let noticeTimer;
+
+      function showNotice(message) {
+        notice.textContent = message;
+        notice.hidden = false;
+        window.clearTimeout(noticeTimer);
+        noticeTimer = window.setTimeout(() => {
+          notice.hidden = true;
+        }, 4000);
+      }
+
+      function showFile(file) {
+        const extension = file.name.split(".").pop().toLowerCase();
+        if (extension !== "dxf" && extension !== "pdf") {
+          chosenFile = null;
+          fileInput.value = "";
+          renderFile();
+          showNotice("DXF 또는 PDF 파일을 선택해 주세요.");
+          return;
+        }
+
+        chosenFile = file;
+        renderFile();
+      }
+
+      function renderFile() {
+        fileList.replaceChildren();
+        startButton.disabled = !chosenFile;
+        if (!chosenFile) return;
+
+        const row = document.createElement("div");
+        row.className = "file-row";
+
+        const type = document.createElement("span");
+        type.className = "file-type";
+        type.textContent = chosenFile.name.split(".").pop().toUpperCase();
+
+        const info = document.createElement("div");
+        info.className = "file-info";
+        const name = document.createElement("div");
+        name.className = "file-name";
+        name.textContent = chosenFile.name;
+        const size = document.createElement("div");
+        size.className = "file-size";
+        size.textContent = `파일 크기 ${formatFileSize(chosenFile.size)}`;
+        info.append(name, size);
+
+        const remove = document.createElement("button");
+        remove.className = "remove-button";
+        remove.type = "button";
+        remove.textContent = "×";
+        remove.setAttribute("aria-label", "선택한 파일 지우기");
+        remove.addEventListener("click", () => {
+          chosenFile = null;
+          fileInput.value = "";
+          renderFile();
+        });
+
+        row.append(type, info, remove);
+        fileList.append(row);
+      }
+
+      function formatFileSize(bytes) {
+        if (bytes < 1024) return `${bytes}바이트`;
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}킬로바이트`;
+        return `${(bytes / (1024 * 1024)).toFixed(1)}메가바이트`;
+      }
+
+      document.querySelector("#select-button").addEventListener("click", () => fileInput.click());
+      fileInput.addEventListener("change", () => {
+        if (fileInput.files.length > 0) showFile(fileInput.files[0]);
+      });
+
+      dropArea.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        dropArea.classList.add("dragging");
+      });
+      dropArea.addEventListener("dragleave", () => dropArea.classList.remove("dragging"));
+      dropArea.addEventListener("drop", (event) => {
+        event.preventDefault();
+        dropArea.classList.remove("dragging");
+        if (event.dataTransfer.files.length > 0) showFile(event.dataTransfer.files[0]);
+      });
+
+      startButton.addEventListener("click", () => {
+        if (!chosenFile) return;
+        selectedFileName.textContent = `선택한 도면: ${chosenFile.name}`;
+        uploadScreen.hidden = true;
+        reviewScreen.hidden = false;
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      });
+
+      document.querySelector("#back-button").addEventListener("click", () => {
+        reviewScreen.hidden = true;
+        uploadScreen.hidden = false;
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      });
+    </script>
+  </body>
+</html>
