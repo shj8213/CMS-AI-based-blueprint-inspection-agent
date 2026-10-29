@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>도면 읽기 자동 검사</title>
+    <style>
+      body { max-width: 900px; margin: 30px auto; padding: 20px; font-family: sans-serif; line-height: 1.8; }
+      .pass { color: #17653b; }
+      .fail { color: #a12020; }
+      iframe { display: none; }
+    </style>
+  </head>
+  <body>
+    <h1>도면 읽기 자동 검사</h1>
+    <p id="status" role="status">검사 중…</p>
+    <ol id="results"></ol>
+    <p><a href="/">홈페이지로 돌아가기</a></p>
+    <script type="module" src="./readers.test.js"></script>
+  </body>
+</html>
