@@ -75,6 +75,7 @@ export function readDxf(buffer) {
   const elements = [];
   const warnings = new Set();
   const unsupported = new Set();
+  const textCoverageReasons = new Set();
   let section = null;
   let foundEntities = false;
   let unit = "단위 미지정";
@@ -118,10 +119,12 @@ export function readDxf(buffer) {
           numberOf(groups, 230, 1) !== 1 || numberOf(groups, 30, 0) !== 0 ||
           numberOf(groups, 31, 0) !== 0 || numberOf(groups, 38, 0) !== 0) {
         warnings.add("확인 필요: 3차원 또는 기울어진 좌표계의 요소는 제외했어요.");
+        textCoverageReasons.add("3차원 또는 기울어진 요소를 제외해 전체 글자 범위를 확인할 수 없어요.");
         continue;
       }
       if (numberOf(groups, 67, 0) !== 0) {
         warnings.add("확인 필요: 배치 공간의 요소는 제외하고 모형 공간만 읽었어요.");
+        textCoverageReasons.add("배치 공간을 제외해 전체 글자 범위를 확인할 수 없어요.");
         continue;
       }
       if (pair.value === "LINE") {
@@ -159,13 +162,15 @@ export function readDxf(buffer) {
         const height = numberOf(groups, 40);
         if (height <= 0) throw new Error("글자 높이는 0보다 커야 해요.");
         const text = decodeText(raw, pair.value === "MTEXT");
+        const uncertain = /\\|[\uFFFD\u0000-\u0008]/.test(text);
+        if (uncertain) textCoverageReasons.add("해석하지 못한 DXF 글자 서식이나 깨진 글자가 있어요.");
         if (!text.trim()) {
           warnings.add("확인 필요: 내용 없는 글자 요소는 제외했어요.");
           continue;
         }
         elements.push({
           kind: "text", position: pointOf(groups, 10, 20), text, height,
-          rotation: numberOf(groups, 50, 0),
+          rotation: numberOf(groups, 50, 0), uncertain,
         });
         if (raw !== text || pair.value === "MTEXT" || numberOf(groups, 72, 0) !== 0 || numberOf(groups, 73, 0) !== 0) {
           warnings.add("확인 필요: 글자의 서식·정렬은 미리보기와 다를 수 있어요. 위치는 DXF 삽입점이에요.");
@@ -177,6 +182,10 @@ export function readDxf(buffer) {
   }
   if (!foundEntities) throw new Error("DXF에서 도면 요소 구역(ENTITIES)을 찾지 못했어요.");
   if (unsupported.size) warnings.add(`확인 필요: 아직 읽지 못하는 요소는 제외했어요: ${[...unsupported].join(", ")}.`);
+  if (unsupported.size) textCoverageReasons.add(`미지원 요소(${[...unsupported].join(", ")})에 글자가 있을 수 있어요.`);
   if (!elements.length) throw new Error(`읽을 수 있는 선·원·글자가 없어요. ${[...warnings].join(" ")}`);
-  return { format: "DXF", unit, elements, pages: [{ number: 1 }], warnings: [...warnings] };
+  return {
+    format: "DXF", unit, elements, pages: [{ number: 1 }], warnings: [...warnings],
+    textCoverage: { reasons: [...textCoverageReasons] },
+  };
 }

@@ -83,6 +83,13 @@ def main():
 213.807119 105 225 116.192881 225 130 c h S
 BT /F1 12 Tf 20 190 Td (Hello blueprint) Tj ET
 """
+    write_pdf("fit.pdf", [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 240] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+        stream(b"BT /F1 12 Tf 20 190 Td (H7/g6) Tj ET\n"),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ])
     second = b"""q 2 0 0 2 30 40 cm
 5 10 m 15 10 l S
 /Shape Do Q
@@ -129,7 +136,7 @@ BT /F1 12 Tf 20 190 Td (Page two) Tj ET
         stream(b"20 30 40 50 re S\n100 100 m 120 100 l 120 120 l f\n200 200 m 210 210 l n\n"),
     ])
     (DESTINATION / "broken.pdf").write_bytes(b"PDF example: not a real PDF\n")
-    print("PDF 예제 6개 생성 완료: simple, scan, scan-only, mixed, paths, broken")
+    print("PDF 예제 7개 생성 완료: simple, fit, scan, scan-only, mixed, paths, broken")
 
 
 if __name__ == "__main__":

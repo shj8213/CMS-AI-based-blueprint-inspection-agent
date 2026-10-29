@@ -196,6 +196,7 @@ function collectOcrWords(blocks, page, scale, warnings) {
             text,
             position: { x: box.x0 / scale, y: box.y1 / scale },
             height: (box.y1 - box.y0) / scale,
+            width: (box.x1 - box.x0) / scale,
             rotation: 0,
             page,
             source: "ocr",
@@ -256,12 +257,16 @@ export async function readPdf(buffer, onProgress = () => {}) {
     const elements = [];
     const pages = [];
     const warnings = new Set();
+    const textCoverageReasons = [];
     for (let number = 1; number <= document.numPages; number += 1) {
       onProgress(`${number}/${document.numPages}페이지 읽는 중…`);
       const page = await document.getPage(number);
       const viewport = page.getViewport({ scale: 1 });
       const operators = await page.getOperatorList();
       const pathResult = readPaths(operators, viewport, number, OPS, warnings);
+      if (operators.fnArray.includes(OPS.beginAnnotation)) {
+        textCoverageReasons.push(`${number}페이지 주석의 글자는 검사 범위에 포함되지 않을 수 있어요.`);
+      }
       const paths = pathResult.elements;
       const texts = [];
       // Safari에서도 읽을 수 있도록 스트림의 비동기 반복 대신 표준 reader를 사용합니다.
@@ -277,6 +282,7 @@ export async function readPdf(buffer, onProgress = () => {}) {
             texts.push({
               kind: "text", text: item.str, position: { x: matrix[4], y: matrix[5] },
               height: Math.hypot(matrix[2], matrix[3]), rotation: Math.atan2(matrix[1], matrix[0]) * 180 / Math.PI,
+              width: item.width,
               page: number, uncertain,
             });
             if (uncertain) warnings.add(`${number}페이지 확인 필요: 일부 글자가 깨져 있어 원본과 비교해야 해요.`);
@@ -287,6 +293,7 @@ export async function readPdf(buffer, onProgress = () => {}) {
       }
       let scanElements = [];
       if (pathResult.hasImage) {
+        textCoverageReasons.push(`${number}페이지에 이미지가 있어요. OCR 신뢰도가 높아도 놓친 글자가 없다고 보장할 수 없어요.`);
         if (!ocrWorker) {
           onProgress("한국어·영어 스캔 글자 읽기 준비 중…");
           ocrWorker = await createOcrWorker(onProgress);
@@ -347,7 +354,10 @@ export async function readPdf(buffer, onProgress = () => {}) {
     if (elements.some((element) => element.kind === "circle" && element.source !== "image")) {
       warnings.add("확인 필요: PDF의 원은 곡선을 바탕으로 추정했어요. 중심과 반지름을 원본과 비교해 주세요.");
     }
-    return { format: "PDF", unit: "포인트(1/72인치)", elements, pages, warnings: [...warnings] };
+    return {
+      format: "PDF", unit: "포인트(1/72인치)", elements, pages, warnings: [...warnings],
+      textCoverage: { reasons: textCoverageReasons },
+    };
   } catch (error) {
     if (error.name === "PasswordException") throw new Error("암호가 걸린 PDF는 아직 읽지 못해요. 암호를 해제한 사본을 선택해 주세요.");
     if (error.name === "InvalidPDFException") throw new Error("올바른 PDF가 아니거나 파일이 손상되었어요. 원본 프로그램에서 다시 저장해 주세요.");
