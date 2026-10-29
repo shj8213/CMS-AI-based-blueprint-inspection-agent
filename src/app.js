@@ -1,5 +1,6 @@
 import { readDxf } from "./dxf.js";
 import { readPdf } from "./pdf.js";
+import { reviewFitNotation } from "./fit-review.js";
 
 const $ = (selector) => document.querySelector(selector);
 const fileInput = $("#file-input");
@@ -81,6 +82,7 @@ function summary(elements) {
 }
 
 function renderResult() {
+  renderFitReview();
   $("#selected-file-name").textContent = `선택한 도면: ${chosenFile.name}`;
   $("#reading-summary").textContent = `${result.format} 읽기 결과 · ${summary(result.elements)} · 도면의 정확성을 판단한 결과는 아니에요.`;
   $("#coordinate-note").textContent = result.format === "PDF"
@@ -100,6 +102,39 @@ function renderResult() {
   $("#page-label").textContent = result.format === "PDF" ? "페이지" : "도면";
   offset = 0;
   renderPage();
+}
+
+function renderFitReview() {
+  const review = reviewFitNotation(result);
+  $("#fit-state").textContent = review.state;
+  $("#fit-reason").textContent = review.reason;
+  $("#fit-scope").textContent = `전체 ${result.pages.length}개 페이지·공간의 글자 ${review.checkedTexts}개를 확인했어요.`;
+  $("#fit-limit").textContent = review.limit;
+  $("#fit-warnings").replaceChildren(...review.reasons.map((reason) => {
+    const item = document.createElement("li");
+    item.textContent = reason;
+    return item;
+  }));
+  $("#fit-candidates").replaceChildren(...review.candidates.map((candidate) => {
+    const item = document.createElement("li");
+    const title = document.createElement("strong");
+    title.textContent = `${candidate.notation} · ${candidate.uncertain ? "읽기 불확실·원본 확인 필요" : "문제 후보"}`;
+    item.append(title);
+    for (const element of candidate.evidence) {
+      const evidence = document.createElement("p");
+      const location = result.format === "PDF" ? `${element.page}페이지` : "DXF 모형 공간";
+      const confidence = element.source === "ocr" ? ` · OCR ${number(element.confidence)}%` : " · 파일에서 읽음";
+      evidence.textContent = `근거 ‘${element.text}’ · ${location} · 기준점 ${point(element.position)} · ${result.unit}${confidence}`;
+      item.append(evidence);
+    }
+    return item;
+  }));
+}
+
+function clearFitReview() {
+  for (const id of ["fit-state", "fit-reason", "fit-scope", "fit-limit", "fit-warnings", "fit-candidates"]) {
+    $(`#${id}`).replaceChildren();
+  }
 }
 
 function renderPage() {
@@ -227,6 +262,7 @@ startButton.addEventListener("click", async () => {
   $("#read-error").textContent = "";
   $("#read-progress").textContent = "파일 읽는 중…";
   result = null;
+  clearFitReview();
   list.replaceChildren();
   preview.replaceChildren();
   try {
@@ -243,6 +279,7 @@ startButton.addEventListener("click", async () => {
     window.scrollTo({ top: 0 });
   } catch (error) {
     result = null;
+    clearFitReview();
     console.error("도면 읽기 실패:", error);
     $("#read-error").textContent = `읽지 못했어요. ${error.message}`;
   } finally {
@@ -254,6 +291,7 @@ $("#back-button").addEventListener("click", () => {
   $("#review-screen").hidden = true;
   $("#upload-screen").hidden = false;
   result = null;
+  clearFitReview();
   list.replaceChildren();
   preview.replaceChildren();
   $("#select-button").focus();
