@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.1",
+  "status": "부분 완료",
+  "source": {
+    "file_name": "synthetic-blurry-scan-reading-result.json",
+    "format": "JSON",
+    "page_count": 1,
+    "analyzed_pages": [1],
+    "unanalyzed_pages": []
+  },
+  "pages": [
+    {
+      "page_number": 1,
+      "views": [
+        {"id": "V1", "type": "정면도", "location_description": "왼쪽"},
+        {"id": "V2", "type": "표제란", "location_description": "오른쪽 아래, 스캔이 흐려 글자가 번져 있음"}
+      ]
+    }
+  ],
+  "elements": [
+    {
+      "id": "E01", "page_number": 1, "view_id": "V1", "category": "치수",
+      "raw_text": "길이 80", "value": 80, "unit": "mm",
+      "location": {"description": "정면도 아래쪽 치수"},
+      "evidence": "선명하게 읽힘.",
+      "confidence": "높음", "needs_confirmation": false
+    },
+    {
+      "id": "E02", "page_number": 1, "view_id": "V2", "category": "표제란",
+      "raw_text": "재질 | ????", "value": null, "unit": null,
+      "location": {"description": "표제란 재질 칸"},
+      "evidence": "칸에 글자가 있는 것처럼 보이나 번져서 읽을 수 없음.",
+      "confidence": "낮음", "needs_confirmation": true
+    }
+  ],
+  "features": [],
+  "dimension_chains": [],
+  "limitations": [
+    "가상의 흐린 스캔 읽기 자료이며 실제 도면이 아님",
+    "표제란 재질 칸은 판독하지 못함",
+    "폭과 높이 치수는 도면 어디에도 적혀 있지 않음"
+  ]
+}

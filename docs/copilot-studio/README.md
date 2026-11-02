@@ -76,6 +76,23 @@ python3 -m json.tool docs/copilot-studio/examples/reviewer-v2-probe-result.json 
 
 정상 종료하면 JSON 문법 검사를 통과한 것입니다. 오류가 있으면 출력된 오류를 해결해야 합니다. 홈페이지의 기존 DXF·PDF 읽기 검사 방법은 [저장소 안내](../../README.md#예제와-자동-검사)에 있으며, 이 Studio 가상 자료 시험과는 별개입니다.
 
+## 여러 페이지·스캔 PDF 보완 (#32)
+
+관련 이슈: [#32](https://github.com/shj8213/CMS-AI-based-blueprint-inspection-agent/issues/32)
+
+V2 지침에 아래 동작을 더한 [reviewer-instructions-v3.txt](reviewer-instructions-v3.txt)를 추가했습니다. **이 파일을 Git에 올려도 Studio에 자동 반영되지 않으며, 담당자가 승인된 초안에 직접 넣어 시험해야 합니다. 아직 Studio에서 V3를 실행하지 않았습니다.**
+
+- 모든 페이지를 확인하기 전에는 "없다"고 하지 않고, 다른 페이지에서 찾은 정보는 `not_missing`에 페이지 번호와 함께 적습니다.
+- 흐려서 읽지 못한 정보는 `확인 필요`와 `[판독 미해결]`로 남기고 "없다"고 단정하지 않습니다.
+- 선명하게 읽히고 모든 페이지에서 찾아도 없는 정보는 여전히 `누락 후보`로 이유와 함께 지적합니다.
+
+| 시험 자료(가상 JSON) | 기대하는 동작 (정답을 에이전트에 보내지 않음) |
+| --- | --- |
+| [reviewer-v3-multipage-probe-input.json](examples/reviewer-v3-multipage-probe-input.json) | 1쪽 표제란의 재질이 비어 있어도 2쪽 부품표에 있으므로 재질을 "빠졌다"고 하지 않음. 어느 쪽에도 없는 폭·높이는 계속 지적 |
+| [reviewer-v3-scan-probe-input.json](examples/reviewer-v3-scan-probe-input.json) | 번진 재질 칸은 `확인 필요`로 남기고 "없다"고 하지 않음. 어디에도 없는 폭·높이는 계속 지적 |
+
+재현 방법은 위 V2 절차와 같고, 요청문 뒤에 해당 JSON 전체만 붙입니다. 학생은 응답이 위 기대 동작과 맞는지, 실제 도면과 비교해 직접 확인해야 합니다. 저장소의 `tests/fixtures`의 PDF(`mixed.pdf`, `scan.pdf`, `scan-only.pdf`)는 홈페이지의 도면 읽기 검사용이며 이번 Studio 시험에는 쓰지 않았습니다.
+
 ## 이슈 완료 조건과 남은 범위
 
 기존 V1에서 직접 제작한 축 도면의 누락본·정상 비교본을 시험한 기록은 [이슈의 완료 준비 댓글](https://github.com/shj8213/CMS-AI-based-blueprint-inspection-agent/issues/31#issuecomment-6575165231)에 있습니다. 그 시험에서는 원본 도면과 같은 도면의 ② JSON을 수동으로 전달했습니다. 그 기록을 V2 실제 도면 재시험으로 취급하지 않습니다.
