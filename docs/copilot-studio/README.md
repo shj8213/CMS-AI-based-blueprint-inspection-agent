@@ -2,7 +2,7 @@
 
 관련 이슈: [#31 — Copilot Studio에서 도면 누락을 찾는 시험용 에이전트 만들기](https://github.com/shj8213/CMS-AI-based-blueprint-inspection-agent/issues/31)
 
-**이 자료는 시험용 에이전트의 지침과 가상 입력 시험 기록입니다. 완성된 제품이나 모든 누락을 찾는다는 보증이 아닙니다.** 학생의 도면 직접 대조가 남아 있어 이슈 완료 근거로 대신 사용할 수 없습니다.
+**이 자료는 시험용 에이전트의 지침과 가상 입력 시험 기록입니다. 완성된 제품이나 모든 누락을 찾는다는 보증이 아닙니다.** #31의 사람 대조는 V1 시험 결과를 대상으로 했으며, 결과는 [대조 기록 댓글](https://github.com/shj8213/CMS-AI-based-blueprint-inspection-agent/issues/31#issuecomment-6578837902)에 있습니다.
 
 ## 포함한 자료와 현재 상태
 
