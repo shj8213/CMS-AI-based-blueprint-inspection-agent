@@ -1,0 +1,80 @@
+{
+  "schema_version": "1.1",
+  "status": "부분 완료",
+  "source": {
+    "file_name": "synthetic-reading-result.json",
+    "format": "JSON",
+    "page_count": 1,
+    "analyzed_pages": [1],
+    "unanalyzed_pages": []
+  },
+  "pages": [
+    {
+      "page_number": 1,
+      "views": [
+        {"id": "V1", "type": "요목표", "location_description": "오른쪽 위"},
+        {"id": "V2", "type": "부품표", "location_description": "오른쪽 아래"},
+        {"id": "V3", "type": "단면도", "location_description": "왼쪽"}
+      ]
+    }
+  ],
+  "elements": [
+    {
+      "id": "E01", "page_number": 1, "view_id": "V1", "category": "표",
+      "raw_text": "모듈 | 기어 치형", "value": null, "unit": null,
+      "location": {"description": "요목표 모듈 행의 값 칸"},
+      "evidence": "같은 행 제목은 모듈이고 값 칸에는 기어 치형이 적혀 있음.",
+      "confidence": "높음", "needs_confirmation": false
+    },
+    {
+      "id": "E02", "page_number": 1, "view_id": "V1", "category": "표",
+      "raw_text": "치형 | 3", "value": 3, "unit": null,
+      "location": {"description": "요목표 치형 행의 값 칸"},
+      "evidence": "같은 행 제목은 치형이고 값 칸에는 3이 적혀 있음.",
+      "confidence": "높음", "needs_confirmation": false
+    },
+    {
+      "id": "E03", "page_number": 1, "view_id": "V1", "category": "표",
+      "raw_text": "잇수 | 24", "value": 24, "unit": null,
+      "location": {"description": "요목표 잇수 행"},
+      "evidence": "잇수 행에 24가 적혀 있음.",
+      "confidence": "높음", "needs_confirmation": false
+    },
+    {
+      "id": "E04", "page_number": 1, "view_id": "V1", "category": "표",
+      "raw_text": "피치원 지름 | Ø72", "value": 72, "unit": null,
+      "location": {"description": "요목표 피치원 지름 행"},
+      "evidence": "피치원 지름 행에 Ø72가 적혀 있음.",
+      "confidence": "높음", "needs_confirmation": false
+    },
+    {
+      "id": "E05", "page_number": 1, "view_id": "V2", "category": "부품표",
+      "raw_text": "1 | 본체 | GC250 | 1 ; 4 | 커버 | GC200 | 1",
+      "value": null, "unit": null,
+      "location": {"description": "부품표 두 행"},
+      "evidence": "제공된 부품표는 두 행이며 다른 부품을 요구하는 조립 참조나 설명은 제공되지 않음.",
+      "confidence": "높음", "needs_confirmation": false
+    },
+    {
+      "id": "E06", "page_number": 1, "view_id": "V3", "category": "치수",
+      "raw_text": "깊이 7", "value": 7, "unit": null,
+      "location": {"description": "두 구멍 사이"},
+      "evidence": "지시선 끝이 겹쳐 어느 구멍의 깊이인지 확정하지 못함.",
+      "confidence": "낮음", "needs_confirmation": true
+    },
+    {
+      "id": "E07", "page_number": 1, "view_id": "V3", "category": "기하공차",
+      "raw_text": "Ø0?5", "value": null, "unit": null,
+      "location": {"description": "단면도 아래 공차 기입틀"},
+      "evidence": "가운데 문자는 판독하지 못함.",
+      "confidence": "낮음", "needs_confirmation": true
+    }
+  ],
+  "features": [],
+  "dimension_chains": [],
+  "limitations": [
+    "검토 동작을 점검하기 위해 사람이 만든 가상의 읽기 자료이며 실제 설계도면이 아니다.",
+    "원본 이미지나 PDF는 제공하지 않는다.",
+    "주서와 다른 영역은 자료에 포함되지 않아 판독 여부를 알 수 없다."
+  ]
+}
