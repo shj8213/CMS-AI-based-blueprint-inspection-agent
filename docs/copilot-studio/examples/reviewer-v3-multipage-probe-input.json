@@ -1,0 +1,56 @@
+{
+  "schema_version": "1.1",
+  "status": "검토 완료",
+  "source": {
+    "file_name": "synthetic-multipage-reading-result.json",
+    "format": "JSON",
+    "page_count": 2,
+    "analyzed_pages": [1, 2],
+    "unanalyzed_pages": []
+  },
+  "pages": [
+    {
+      "page_number": 1,
+      "views": [
+        {"id": "V1", "type": "정면도", "location_description": "페이지 1 중앙"},
+        {"id": "V2", "type": "표제란", "location_description": "페이지 1 오른쪽 아래, 재질 칸이 비어 있음"}
+      ]
+    },
+    {
+      "page_number": 2,
+      "views": [
+        {"id": "V3", "type": "부품표", "location_description": "페이지 2 오른쪽 위"}
+      ]
+    }
+  ],
+  "elements": [
+    {
+      "id": "E01", "page_number": 1, "view_id": "V1", "category": "치수",
+      "raw_text": "길이 80", "value": 80, "unit": "mm",
+      "location": {"description": "페이지 1 정면도 아래쪽 치수"},
+      "evidence": "정면도에 길이 80이 적혀 있음.",
+      "confidence": "높음", "needs_confirmation": false
+    },
+    {
+      "id": "E02", "page_number": 1, "view_id": "V2", "category": "표제란",
+      "raw_text": "재질 |", "value": null, "unit": null,
+      "location": {"description": "페이지 1 표제란 재질 칸"},
+      "evidence": "재질 칸이 비어 있음. 다른 페이지는 참조하지 않음.",
+      "confidence": "높음", "needs_confirmation": false
+    },
+    {
+      "id": "E03", "page_number": 2, "view_id": "V3", "category": "부품표",
+      "raw_text": "1 | 본체 | SM45C | 1",
+      "value": null, "unit": null,
+      "location": {"description": "페이지 2 부품표 1행"},
+      "evidence": "페이지 2 부품표에 품번 1 본체의 재질이 SM45C로 적혀 있음.",
+      "confidence": "높음", "needs_confirmation": false
+    }
+  ],
+  "features": [],
+  "dimension_chains": [],
+  "limitations": [
+    "가상의 2페이지 읽기 자료이며 실제 도면이 아님",
+    "폭과 높이 치수는 어느 페이지에도 적혀 있지 않음"
+  ]
+}
