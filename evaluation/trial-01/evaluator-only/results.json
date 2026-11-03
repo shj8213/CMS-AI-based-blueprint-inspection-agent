@@ -1,0 +1,18 @@
+{
+  "mode": "actual",
+  "agent_version": "",
+  "run_date": "",
+  "human_reviewed": false,
+  "cases": {
+    "D017": {
+      "state": "not_run",
+      "response": "",
+      "findings": []
+    },
+    "D042": {
+      "state": "not_run",
+      "response": "",
+      "findings": []
+    }
+  }
+}

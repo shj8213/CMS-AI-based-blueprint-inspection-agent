@@ -1,0 +1,21 @@
+{
+  "human_approved": false,
+  "scope": "기재 항목 누락을 확인하는 단순 연습도예요. 제조용 도면·규격 적합의 정답은 아니에요.",
+  "cases": {
+    "D017": {
+      "sha256": "d361b433d63d6cb21cc17de11ca306674c0f789a132cfe9df53852d7d444aca0",
+      "omissions": [
+        {
+          "id": "material",
+          "description": "재질 칸이 비어 있음",
+          "location": "1페이지·상단 MATERIAL 칸",
+          "reason": "재질을 지정하는 칸은 있지만 값이 적혀 있지 않아요."
+        }
+      ]
+    },
+    "D042": {
+      "sha256": "1d23de78bae7e5f719fb5ab511dd739dbf1d89774ad40ee92851cd293010abd4",
+      "omissions": []
+    }
+  }
+}
