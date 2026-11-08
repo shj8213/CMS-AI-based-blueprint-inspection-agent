@@ -307,8 +307,11 @@
       #drawing-preview text { fill: #172033; stroke: none; }
       #drawing-preview line, #drawing-preview circle { fill: none; stroke: #245cdb; stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
       #drawing-preview .uncertain { stroke: #bf7a00; stroke-dasharray: 4 3; }
+      #drawing-preview text.uncertain { fill: #8a5700; stroke: none; }
       .preview-note { margin: 12px 0 0; color: #68758a; font-size: 12px; line-height: 1.6; }
       .result-navigation { display: flex; align-items: center; gap: 12px; margin-top: 12px; font-size: 12px; }
+      .agent-input-text { width: 100%; margin-top: 6px; padding: 10px; border: 1px solid #d5deec; border-radius: 9px; font: 12px/1.5 ui-monospace, Consolas, monospace; resize: vertical; }
+      .transfer-notice { padding: 12px; border: 1px solid #e5c777; border-radius: 9px; background: #fff8e6; color: #70520b; font-size: 13px; line-height: 1.7; }
 
       @media (max-width: 740px) {
         .page { width: min(100% - 28px, 540px); }
@@ -363,11 +366,12 @@
             <div id="file-list" aria-live="polite"></div>
             <p class="privacy-note">파일은 서버로 보내지 않고 이 브라우저 안에서만 읽어요. 스캔 PDF의 글자는 OCR로 찾으며, 인식 결과는 원본과 비교해 주세요.</p>
             <p class="privacy-note">확인용 예제 받기: <a href="./tests/fixtures/simple.dxf" download>DXF</a> · <a href="./tests/fixtures/simple.pdf" download>일반 PDF</a> · <a href="./tests/fixtures/scan.pdf" download>스캔 PDF</a></p>
+            <p class="privacy-note">검토 시험용 DXF 받기: <a href="./tests/fixtures/review-a.dxf" download>예제 A</a> · <a href="./tests/fixtures/review-b.dxf" download>예제 B</a> · <a href="./tests/fixtures/review-c.dxf" download>예제 C</a> — 개인정보·기밀이 없는 가상 자료예요.</p>
             <p class="read-message" id="read-progress" role="status"></p>
             <p class="read-message error" id="read-error" role="alert"></p>
             <button class="start-button" id="start-button" type="button" disabled>도면 읽기</button>
           </section>
-          <p class="bottom-note">선·원·글자를 읽는 첫 단계예요. 도면의 정확성 판단·가공방법 추천·수정 기능은 아직 연결되지 않았어요.</p>
+          <p class="bottom-note">선·원·글자를 읽는 첫 단계예요. DXF 결과는 복사해서 Studio 검토 에이전트에 직접 전달할 수 있어요. 자동 검토·가공방법 추천·수정 기능은 아직 없어요.</p>
         </section>
 
         <section class="screen" id="review-screen" aria-labelledby="result-title" hidden>
@@ -403,12 +407,25 @@
             </div>
           </section>
 
+          <section class="card reading-results" id="agent-input-card" aria-labelledby="agent-input-title" hidden>
+            <h2 id="agent-input-title">검토 에이전트용 자료 (DXF)</h2>
+            <p class="subtext">위에서 읽은 선·원·글자를 Copilot Studio의 ③ 도면 검토 에이전트가 읽을 수 있는 글(JSON)로 바꿨어요. 원본 DXF 파일은 바꾸지 않아요. ②의 전체 분석을 한 것은 아니어서 “부분 완료”로 표시하고, 못 읽었거나 글자·위치가 불확실한 부분은 “확인 필요”로 남겨요.</p>
+            <p class="transfer-notice">이 버튼은 자료를 복사만 하고 어디에도 보내지 않아요. 복사한 내용을 Copilot Studio에 붙여넣으면 파일 이름, 도면의 글자와 좌표가 외부 서비스(Microsoft Copilot Studio)로 전달돼요. 붙여넣기 전에 개인정보나 기밀이 없는지 확인해 주세요.</p>
+            <label for="agent-input-text">복사할 내용</label>
+            <textarea id="agent-input-text" class="agent-input-text" readonly rows="10"></textarea>
+            <p class="privacy-note" id="agent-input-count"></p>
+            <div class="result-toolbar">
+              <button class="select-button" id="copy-agent-input" type="button">검토 에이전트용 자료 복사</button>
+              <span id="agent-input-status" role="status"></span>
+            </div>
+          </section>
+
           <div class="review-layout">
             <section class="card" aria-label="읽어낸 요소 미리보기">
               <div class="drawing review-drawing">
                 <svg id="drawing-preview" role="img" aria-label="현재 페이지에서 읽어낸 선·원·글자"></svg>
               </div>
-              <p class="preview-note">읽은 요소만 다시 그린 미리보기예요. 원본의 글꼴·정렬·잘림·숨김 표시는 반영하지 않아요. 노란 점선 원은 곡선에서 추정한 원이에요.</p>
+              <p class="preview-note">읽은 요소만 다시 그린 미리보기예요. 원본의 글꼴·정렬·잘림·숨김 표시는 반영하지 않아요. 노란 글자와 점선 요소는 원본 확인이 필요해요.</p>
             </section>
 
             <div class="review-side">
