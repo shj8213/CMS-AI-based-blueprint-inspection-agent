@@ -38,7 +38,7 @@ function pairsFrom(text) {
     if (!/^\d+$/.test(code) || Number(code) > 1071) {
       throw new Error(`DXF ${index + 1}번째 줄의 코드가 올바르지 않아요.`);
     }
-    pairs.push({ code: Number(code), value: lines[index + 1].trim(), rawValue: lines[index + 1] });
+    pairs.push({ code: Number(code), value: lines[index + 1].trim() });
   }
   if (pairs.at(-1).code !== 0 || pairs.at(-1).value !== "EOF") {
     throw new Error("DXF의 끝 표시가 없어요. 파일이 잘렸는지 확인해 주세요.");
@@ -110,12 +110,7 @@ export function readDxf(buffer) {
     if (!section) throw new Error("DXF 요소가 구역 밖에 있어요.");
     if (section !== "ENTITIES") continue;
     if (!["LINE", "CIRCLE", "TEXT", "MTEXT", "LWPOLYLINE"].includes(pair.value)) {
-      if (/^[A-Z0-9_]{1,64}$/.test(pair.value)) {
-        unsupported.add(pair.value);
-      } else {
-        unsupported.add("이름 확인 필요");
-        warnings.add("확인 필요: 형식이 맞지 않거나 너무 긴 요소 이름은 표시하지 않았어요.");
-      }
+      unsupported.add(pair.value);
       continue;
     }
     try {
@@ -130,11 +125,11 @@ export function readDxf(buffer) {
         continue;
       }
       if (pair.value === "LINE") {
-        elements.push({ kind: "line", entity: "LINE", start: pointOf(groups, 10, 20), end: pointOf(groups, 11, 21) });
+        elements.push({ kind: "line", start: pointOf(groups, 10, 20), end: pointOf(groups, 11, 21) });
       } else if (pair.value === "CIRCLE") {
         const radius = numberOf(groups, 40);
         if (radius <= 0) throw new Error("원의 반지름은 0보다 커야 해요.");
-        elements.push({ kind: "circle", entity: "CIRCLE", center: pointOf(groups, 10, 20), radius });
+        elements.push({ kind: "circle", center: pointOf(groups, 10, 20), radius });
       } else if (pair.value === "LWPOLYLINE") {
         const vertices = [];
         for (const group of groups) {
@@ -154,13 +149,13 @@ export function readDxf(buffer) {
           if (numberOf(vertices[vertex], 42, 0) !== 0) {
             warnings.add("확인 필요: 연결선 안의 원호는 아직 읽지 못해 제외했어요.");
           } else {
-            elements.push({ kind: "line", entity: "LWPOLYLINE", start: points[vertex], end: points[(vertex + 1) % points.length] });
+            elements.push({ kind: "line", start: points[vertex], end: points[(vertex + 1) % points.length] });
           }
         }
       } else {
         const content = groups.filter((group) => group.code === 1 || (pair.value === "MTEXT" && group.code === 3));
         if (!content.length) throw new Error("글자 내용이 없어요.");
-        const raw = content.map((group) => group.rawValue).join("");
+        const raw = content.map((group) => group.value).join("");
         const height = numberOf(groups, 40);
         if (height <= 0) throw new Error("글자 높이는 0보다 커야 해요.");
         const text = decodeText(raw, pair.value === "MTEXT");
@@ -168,13 +163,11 @@ export function readDxf(buffer) {
           warnings.add("확인 필요: 내용 없는 글자 요소는 제외했어요.");
           continue;
         }
-        const uncertain = raw !== text || pair.value === "MTEXT" ||
-          numberOf(groups, 72, 0) !== 0 || numberOf(groups, 73, 0) !== 0;
         elements.push({
-          kind: "text", entity: pair.value, position: pointOf(groups, 10, 20), text, rawText: raw, height, uncertain,
+          kind: "text", position: pointOf(groups, 10, 20), text, height,
           rotation: numberOf(groups, 50, 0),
         });
-        if (uncertain) {
+        if (raw !== text || pair.value === "MTEXT" || numberOf(groups, 72, 0) !== 0 || numberOf(groups, 73, 0) !== 0) {
           warnings.add("확인 필요: 글자의 서식·정렬은 미리보기와 다를 수 있어요. 위치는 DXF 삽입점이에요.");
         }
       }
@@ -185,5 +178,5 @@ export function readDxf(buffer) {
   if (!foundEntities) throw new Error("DXF에서 도면 요소 구역(ENTITIES)을 찾지 못했어요.");
   if (unsupported.size) warnings.add(`확인 필요: 아직 읽지 못하는 요소는 제외했어요: ${[...unsupported].join(", ")}.`);
   if (!elements.length) throw new Error(`읽을 수 있는 선·원·글자가 없어요. ${[...warnings].join(" ")}`);
-  return { format: "DXF", unit, elements, pages: [{ number: 1 }], warnings: [...warnings], unsupported: [...unsupported] };
+  return { format: "DXF", unit, elements, pages: [{ number: 1 }], warnings: [...warnings] };
 }
