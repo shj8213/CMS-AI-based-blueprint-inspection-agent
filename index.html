@@ -17,7 +17,7 @@
 
       * { box-sizing: border-box; }
       body { min-width: 320px; margin: 0; }
-      button, input { font: inherit; }
+      button, input, textarea { font: inherit; }
       button { cursor: pointer; }
 
       .page { width: min(1120px, calc(100% - 36px)); margin: 0 auto; }
@@ -308,7 +308,23 @@
       #drawing-preview line, #drawing-preview circle { fill: none; stroke: #245cdb; stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
       #drawing-preview .uncertain { stroke: #bf7a00; stroke-dasharray: 4 3; }
       .preview-note { margin: 12px 0 0; color: #68758a; font-size: 12px; line-height: 1.6; }
-      .result-navigation { display: flex; align-items: center; gap: 12px; margin-top: 12px; font-size: 12px; }
+      .result-navigation { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 12px; font-size: 12px; }
+      .chat-transfer { margin: 18px 0; }
+      .chat-transfer p, .chat-transfer li { font-size: 13px; line-height: 1.7; }
+      .transfer-steps { padding-left: 22px; }
+      .transfer-check { display: flex; align-items: flex-start; gap: 9px; font-size: 13px; line-height: 1.7; }
+      .transfer-check input { flex: 0 0 auto; margin-top: 5px; }
+      .transfer-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0; }
+      .transfer-actions button { min-height: 44px; padding: 10px 14px; }
+      .transfer-actions .start-button { width: auto; }
+      .copy-preview { margin-top: 16px; padding: 14px; border: 1px solid #d5deec; border-radius: 10px; }
+      .copy-preview summary { cursor: pointer; font-weight: 700; font-size: 13px; }
+      .copy-preview label { display: block; margin: 12px 0 7px; font-size: 13px; }
+      #copy-data { display: block; width: 100%; min-height: 220px; padding: 12px; border: 1px solid #d5deec; border-radius: 8px; font-family: monospace; font-size: 12px; resize: vertical; }
+      .chat-panel { margin: 18px 0; }
+      .chat-panel[hidden] { display: none; }
+      .chat-panel iframe { display: block; width: 100%; height: clamp(480px, 75vh, 720px); border: 1px solid #d5deec; border-radius: 12px; background: #fff; }
+      button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible, a:focus-visible, select:focus-visible { outline: 3px solid #245cdb; outline-offset: 3px; }
 
       @media (max-width: 740px) {
         .page { width: min(100% - 28px, 540px); }
@@ -320,6 +336,10 @@
         .review-layout { grid-template-columns: 1fr; gap: 14px; }
         .review-drawing { min-height: 380px; }
         .review-header { align-items: flex-start; }
+        .transfer-actions { flex-direction: column; }
+        .transfer-actions button, .transfer-actions .start-button { width: 100%; }
+        .chat-panel .heading-row { flex-wrap: wrap; }
+        .chat-panel iframe { height: 560px; }
       }
     </style>
   </head>
@@ -327,7 +347,7 @@
     <div class="page">
       <header>
         <div class="brand"><span class="brand-icon" aria-hidden="true">⌁</span>기계 도면 작업 도우미</div>
-        <div class="header-note">검도부터 수정본 제작까지</div>
+        <div class="header-note">로컬 도면 읽기 · 직접 채팅</div>
       </header>
 
       <main>
@@ -335,7 +355,7 @@
           <div class="intro">
             <div class="intro-label">기계 도면 작업 도우미</div>
             <h1 id="main-title">도면을 올리고 작업을 시작하세요</h1>
-            <p>도면 검토, 가공방법 추천, 수정본 제작을 돕는 화면입니다.</p>
+            <p>도면을 로컬에서 읽고, 결과를 직접 복사해 도면 분석 에이전트에게 물어보세요.</p>
           </div>
 
           <section class="card upload-panel" aria-labelledby="upload-title">
@@ -361,13 +381,13 @@
               >
             </div>
             <div id="file-list" aria-live="polite"></div>
-            <p class="privacy-note">파일은 서버로 보내지 않고 이 브라우저 안에서만 읽어요. 스캔 PDF의 글자는 OCR로 찾으며, 인식 결과는 원본과 비교해 주세요.</p>
+            <p class="privacy-note">파일은 서버로 보내지 않고 이 브라우저 안에서만 읽어요. 스캔 PDF의 글자는 OCR로 찾으며, 인식 결과는 원본과 비교해 주세요. 채팅은 직접 열 때만 Microsoft에 접속하며, 복사한 내용을 사용자가 붙여넣어 전송할 때 외부에서 처리해요.</p>
             <p class="privacy-note">확인용 예제 받기: <a href="./tests/fixtures/simple.dxf" download>DXF</a> · <a href="./tests/fixtures/simple.pdf" download>일반 PDF</a> · <a href="./tests/fixtures/scan.pdf" download>스캔 PDF</a></p>
             <p class="read-message" id="read-progress" role="status"></p>
             <p class="read-message error" id="read-error" role="alert"></p>
             <button class="start-button" id="start-button" type="button" disabled>도면 읽기</button>
           </section>
-          <p class="bottom-note">선·원·글자를 읽는 첫 단계예요. 도면의 정확성 판단·가공방법 추천·수정 기능은 아직 연결되지 않았어요.</p>
+          <p class="bottom-note">도면 판독 결과는 설계 적합성 판정이 아니에요. 채팅 답변은 원본과 비교하고 사람이 검토해야 해요. 가공방법 추천·수정본 제작은 아직 홈페이지 기능으로 연결되지 않았어요.</p>
         </section>
 
         <section class="screen" id="review-screen" aria-labelledby="result-title" hidden>
@@ -403,6 +423,45 @@
             </div>
           </section>
 
+          <section class="card chat-transfer" aria-labelledby="transfer-title">
+            <h2 id="transfer-title">도면 분석 에이전트에게 직접 전달하기</h2>
+            <ol class="transfer-steps">
+              <li>아래 전체 결과를 펼쳐 글자·경고에 개인정보, 고객명, 회사의 비공개 도면 정보가 없는지 확인하세요.</li>
+              <li>민감한 내용 확인란을 체크하고 <strong>전체 결과 복사</strong>를 누르세요.</li>
+              <li><strong>채팅 열기</strong>를 누른 뒤, 사용자가 채팅 입력창에 직접 붙여넣고 전송하세요. 자동 전송하지 않아요.</li>
+            </ol>
+            <p id="transfer-privacy"><strong>채팅을 열면 Microsoft에 접속해요.</strong> 로그인 없이 쓰는 공개 채팅이며, 사용량에 따라 운영자의 Copilot Studio 크레딧이 소모되거나 비용이 발생할 수 있어요. 붙여넣어 전송한 도면 정보는 Microsoft에서 처리돼요. <strong>원본 파일은 자동으로 보내지지 않으며, 이 채팅에서는 파일 첨부도 지원하지 않아요.</strong></p>
+            <p id="copy-help">현재 표시 페이지나 목록 일부가 아니라 <strong>전체 페이지·요소·경고</strong>를 JSON(구조화된 텍스트)으로 복사해요. 파일명은 포함하지 않지만 도면 속 글자에는 민감한 내용이 남을 수 있어요. 민감한 정보가 있으면 전송하지 말고, 공개 가능한 도면으로 다시 읽어 주세요. OCR 신뢰도와 확인 필요 후보도 그대로 담으며, 도면 판독 결과는 설계 적합성 판정이 아니에요.</p>
+            <details class="copy-preview" id="copy-preview">
+              <summary>1. 복사할 전체 결과와 민감한 내용 확인</summary>
+              <label for="copy-data">전체 읽기 결과 JSON (읽기 전용)</label>
+              <textarea id="copy-data" rows="12" readonly spellcheck="false" aria-describedby="copy-help manual-copy-help"></textarea>
+              <p id="manual-copy-help">자동 복사가 실패하면 전체 텍스트를 선택하고 Windows는 Ctrl+C, macOS는 Command+C로 직접 복사하세요. 모바일에서는 글자를 길게 눌러 전체 선택 후 복사하세요. 직접 복사를 마친 경우에만 아래 확인 버튼을 누르세요.</p>
+              <div class="transfer-actions">
+                <button class="select-button" id="select-copy-data" type="button" disabled>전체 텍스트 선택</button>
+                <button class="select-button" id="confirm-manual-copy" type="button" disabled>직접 복사를 마쳤어요</button>
+              </div>
+            </details>
+            <p><label class="transfer-check"><input id="sensitive-check" type="checkbox" aria-describedby="copy-help transfer-privacy">전체 결과의 민감한 내용을 확인했고, 공개 가능한 정보만 채팅으로 전달하겠어요.</label></p>
+            <div class="transfer-actions">
+              <button class="start-button" id="copy-result" type="button" disabled>2. 전체 결과 복사</button>
+              <button class="select-button" id="open-chat" type="button" aria-controls="chat-panel" aria-expanded="false" disabled>3. 채팅 열기</button>
+            </div>
+            <p class="read-message" id="copy-status" role="status"></p>
+            <p class="read-message error" id="copy-error" role="alert"></p>
+          </section>
+
+          <section class="card chat-panel" id="chat-panel" aria-labelledby="chat-title" hidden>
+            <div class="heading-row">
+              <h2 id="chat-title" tabindex="-1">Copilot Studio 도면 분석 채팅</h2>
+              <button class="select-button" id="close-chat" type="button">채팅 닫기</button>
+            </div>
+            <p class="subtext">입력창에 복사한 JSON을 직접 붙여넣고 전송하세요. 홈페이지는 메시지나 원본 파일을 자동으로 보내지 않으며, 채팅 답변을 표·미리보기에 자동 반영하지 않아요.</p>
+            <p class="read-message" id="chat-status" role="status"></p>
+            <div id="chat-frame"></div>
+            <p class="preview-note">홈페이지에서는 외부 채팅의 입력창·로그인 요구·응답 성공을 확인할 수 없어요. 채팅이 보이지 않으면 <a id="chat-external-link" target="_blank" rel="noopener noreferrer">같은 채팅을 새 탭으로 열기</a>를 사용하세요. 긴 JSON이 채팅 길이 제한에 걸리면 임의로 잘라 보내지 말고 관리자에게 알려 주세요.</p>
+          </section>
+
           <div class="review-layout">
             <section class="card" aria-label="읽어낸 요소 미리보기">
               <div class="drawing review-drawing">
@@ -415,10 +474,10 @@
               <section class="workflow-card" aria-labelledby="feedback-title">
                 <div class="heading-row">
                   <div>
-                    <h2 id="feedback-title">검도 결과와 피드백</h2>
-                    <p class="subtext">도면에서 확인할 위치와 이유를 살펴봅니다.</p>
+                    <h2 id="feedback-title">검토 답변 안내</h2>
+                    <p class="subtext">채팅의 답변을 원본 도면과 비교하세요.</p>
                   </div>
-                  <span class="status">검토 전</span>
+                  <span class="status">직접 확인</span>
                 </div>
 
                 <div class="legend" aria-label="색깔별 검토 결과 안내">
@@ -431,8 +490,8 @@
                 <div class="feedback" aria-live="polite">
                   <span class="info-icon" aria-hidden="true">안내</span>
                   <div>
-                    <strong>아직 검도 결과가 없어요</strong>
-                    <p>검도 기능이 연결되면 위치별 문제와 근거, 수정 피드백이 표시됩니다.</p>
+                    <strong>답변은 위 채팅에서 확인해 주세요</strong>
+                    <p>홈페이지의 표와 미리보기에는 답변을 자동으로 표시하지 않아요. 후보·확인 필요 항목은 확정된 오류가 아니며, 설계 적합성은 사람이 별도로 검토해야 해요.</p>
                   </div>
                 </div>
               </section>

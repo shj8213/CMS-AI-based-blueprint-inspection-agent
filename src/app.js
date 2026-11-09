@@ -1,5 +1,6 @@
 import { readDxf } from "./dxf.js";
 import { readPdf } from "./pdf.js";
+import { coordinateNote, serializeReaderResult } from "./reader-export.js";
 
 const $ = (selector) => document.querySelector(selector);
 const fileInput = $("#file-input");
@@ -8,14 +9,59 @@ const dropArea = $("#drop-area");
 const pageSelect = $("#page-select");
 const list = $("#element-list");
 const preview = $("#drawing-preview");
+const copyButton = $("#copy-result");
+const copyData = $("#copy-data");
+const sensitiveCheck = $("#sensitive-check");
+const openChatButton = $("#open-chat");
 const TABLE_SIZE = 100;
+const CHAT_URL = "https://copilotstudio.microsoft.com/environments/Default-62ae463a-9f12-4edf-8544-4f6ca3834524/bots/cre4a_bot_GA1WSN/webchat?__version__=2&enableFileAttachment=false&cliAgent=true";
 let chosenFile = null;
 let busy = false;
 let result = null;
 let offset = 0;
+let copiedResult = null;
+let copyRequest = 0;
 
 const number = (value) => new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 3 }).format(value);
 const point = (value) => `(${number(value.x)}, ${number(value.y)})`;
+
+function closeChat() {
+  $("#chat-frame").replaceChildren();
+  $("#chat-panel").hidden = true;
+  $("#chat-status").textContent = "";
+  $("#chat-external-link").removeAttribute("href");
+  openChatButton.textContent = "3. 채팅 열기";
+  openChatButton.setAttribute("aria-expanded", "false");
+}
+
+function clearResult() {
+  result = null;
+  copiedResult = null;
+  copyRequest += 1;
+  list.replaceChildren();
+  preview.replaceChildren();
+  pageSelect.replaceChildren();
+  $("#reading-warnings").replaceChildren();
+  $("#selected-file-name").textContent = "";
+  $("#reading-summary").textContent = "";
+  $("#coordinate-note").textContent = "";
+  $("#page-summary").textContent = "";
+  $("#result-range").textContent = "";
+  $("#previous-results").disabled = true;
+  $("#next-results").disabled = true;
+  copyData.value = "";
+  sensitiveCheck.checked = false;
+  sensitiveCheck.disabled = false;
+  copyButton.disabled = true;
+  copyButton.textContent = "2. 전체 결과 복사";
+  $("#select-copy-data").disabled = true;
+  $("#confirm-manual-copy").disabled = true;
+  openChatButton.disabled = true;
+  $("#copy-preview").open = false;
+  $("#copy-status").textContent = "";
+  $("#copy-error").textContent = "";
+  closeChat();
+}
 
 function setBusy(value) {
   busy = value;
@@ -29,6 +75,9 @@ function setBusy(value) {
 
 function showFile(file) {
   if (busy) return;
+  clearResult();
+  $("#review-screen").hidden = true;
+  $("#upload-screen").hidden = false;
   $("#read-error").textContent = "";
   $("#read-progress").textContent = "";
   const extension = file.name.split(".").pop().toLowerCase();
@@ -66,6 +115,7 @@ function renderFile() {
   remove.textContent = "×";
   remove.setAttribute("aria-label", "선택한 파일 지우기");
   remove.addEventListener("click", () => {
+    clearResult();
     chosenFile = null;
     fileInput.value = "";
     $("#read-error").textContent = "";
@@ -83,9 +133,7 @@ function summary(elements) {
 function renderResult() {
   $("#selected-file-name").textContent = `선택한 도면: ${chosenFile.name}`;
   $("#reading-summary").textContent = `${result.format} 읽기 결과 · ${summary(result.elements)} · 도면의 정확성을 판단한 결과는 아니에요.`;
-  $("#coordinate-note").textContent = result.format === "PDF"
-    ? `위치: 각 페이지의 왼쪽 위가 (0, 0), 오른쪽·아래쪽이 +방향이에요. 단위: ${result.unit}. 글자는 시작 기준점이에요.`
-    : `위치: DXF 원본 좌표이며 오른쪽·위쪽이 +방향이에요. 단위: ${result.unit}. 글자는 삽입점이에요.`;
+  $("#coordinate-note").textContent = coordinateNote(result);
   $("#reading-warnings").replaceChildren(...result.warnings.map((message) => {
     const item = document.createElement("li");
     item.textContent = message;
@@ -98,6 +146,8 @@ function renderResult() {
     return option;
   }));
   $("#page-label").textContent = result.format === "PDF" ? "페이지" : "도면";
+  copyData.value = serializeReaderResult(result);
+  $("#select-copy-data").disabled = false;
   offset = 0;
   renderPage();
 }
@@ -216,6 +266,10 @@ dropArea.addEventListener("drop", (event) => {
   dropArea.classList.remove("dragging");
   if (busy) return;
   if (event.dataTransfer.files.length !== 1) {
+    clearResult();
+    chosenFile = null;
+    fileInput.value = "";
+    renderFile();
     $("#read-error").textContent = "파일은 한 번에 하나만 선택해 주세요.";
     return;
   }
@@ -226,9 +280,7 @@ startButton.addEventListener("click", async () => {
   setBusy(true);
   $("#read-error").textContent = "";
   $("#read-progress").textContent = "파일 읽는 중…";
-  result = null;
-  list.replaceChildren();
-  preview.replaceChildren();
+  clearResult();
   try {
     await new Promise((resolve) => setTimeout(resolve, 0));
     const buffer = await chosenFile.arrayBuffer();
@@ -242,7 +294,9 @@ startButton.addEventListener("click", async () => {
     $("#result-title").focus();
     window.scrollTo({ top: 0 });
   } catch (error) {
-    result = null;
+    clearResult();
+    $("#review-screen").hidden = true;
+    $("#upload-screen").hidden = false;
     console.error("도면 읽기 실패:", error);
     $("#read-error").textContent = `읽지 못했어요. ${error.message}`;
   } finally {
@@ -253,9 +307,7 @@ startButton.addEventListener("click", async () => {
 $("#back-button").addEventListener("click", () => {
   $("#review-screen").hidden = true;
   $("#upload-screen").hidden = false;
-  result = null;
-  list.replaceChildren();
-  preview.replaceChildren();
+  clearResult();
   $("#select-button").focus();
   window.scrollTo({ top: 0 });
 });
@@ -270,4 +322,99 @@ $("#previous-results").addEventListener("click", () => {
 $("#next-results").addEventListener("click", () => {
   offset += TABLE_SIZE;
   renderPage();
+});
+
+sensitiveCheck.addEventListener("change", () => {
+  copyButton.disabled = !result || !sensitiveCheck.checked;
+  $("#confirm-manual-copy").disabled = !result || !sensitiveCheck.checked;
+  if (!sensitiveCheck.checked) {
+    copiedResult = null;
+    openChatButton.disabled = true;
+    $("#copy-status").textContent = "";
+    closeChat();
+  }
+});
+
+function markCopied(manual = false) {
+  copiedResult = result;
+  openChatButton.disabled = false;
+  $("#copy-status").textContent = manual
+    ? "직접 복사를 마쳤다고 확인했어요. 채팅을 열고 직접 붙여넣은 뒤 전송하세요."
+    : `전체 ${result.pages.length}페이지의 읽기 결과를 복사했어요. 아직 외부로 전송하지 않았어요. 채팅을 열고 직접 붙여넣은 뒤 전송하세요.`;
+}
+
+$("#select-copy-data").addEventListener("click", () => {
+  if (!result) return;
+  copyData.focus();
+  copyData.select();
+});
+$("#confirm-manual-copy").addEventListener("click", () => {
+  if (!result || !sensitiveCheck.checked || sensitiveCheck.disabled) return;
+  markCopied(true);
+});
+copyButton.addEventListener("click", async () => {
+  if (!result || !sensitiveCheck.checked || sensitiveCheck.disabled) return;
+  const request = ++copyRequest;
+  const text = serializeReaderResult(result);
+  copiedResult = null;
+  openChatButton.disabled = true;
+  copyButton.disabled = true;
+  copyButton.textContent = "복사 중…";
+  sensitiveCheck.disabled = true;
+  $("#confirm-manual-copy").disabled = true;
+  $("#copy-error").textContent = "";
+  $("#copy-status").textContent = "";
+  try {
+    if (!navigator.clipboard?.writeText) {
+      throw new Error("이 브라우저나 접속 주소에서는 자동 복사를 지원하지 않아요.");
+    }
+    await navigator.clipboard.writeText(text);
+    if (request !== copyRequest) return;
+    markCopied();
+  } catch (error) {
+    if (request !== copyRequest) return;
+    console.error("도면 결과 복사 실패:", error);
+    $("#copy-error").textContent = `복사하지 못했어요. ${error.message} 아래 전체 결과에서 직접 복사해 주세요.`;
+    $("#copy-preview").open = true;
+    copyData.focus();
+    copyData.select();
+  } finally {
+    if (request === copyRequest) {
+      sensitiveCheck.disabled = false;
+      copyButton.disabled = !sensitiveCheck.checked;
+      copyButton.textContent = "2. 전체 결과 복사";
+      $("#confirm-manual-copy").disabled = !sensitiveCheck.checked;
+    }
+  }
+});
+
+openChatButton.addEventListener("click", () => {
+  if (!result || copiedResult !== result || !sensitiveCheck.checked) return;
+  if (!$("#chat-frame").firstElementChild) {
+    const frame = document.createElement("iframe");
+    frame.title = "Microsoft Copilot Studio 도면 분석 에이전트 채팅";
+    frame.referrerPolicy = "no-referrer";
+    frame.addEventListener("load", () => {
+      if (!frame.isConnected) return;
+      $("#chat-status").textContent = "채팅 입력창이 보이는지 확인하세요. 표시되지 않거나 로그인 요청이 나오면 새 탭으로 열거나 관리자에게 알려 주세요.";
+    });
+    frame.addEventListener("error", () => {
+      if (!frame.isConnected) return;
+      console.error("Copilot Studio 채팅 화면을 불러오지 못했어요.");
+      $("#chat-status").textContent = "채팅 화면을 불러오지 못했어요. 새 탭으로 열거나 관리자에게 알려 주세요.";
+    });
+    frame.src = CHAT_URL;
+    $("#chat-frame").append(frame);
+    $("#chat-external-link").href = CHAT_URL;
+    $("#chat-status").textContent = "Microsoft에 접속 중이에요. 채팅이 보이면 복사한 JSON을 직접 붙여넣고 전송하세요.";
+  }
+  $("#chat-panel").hidden = false;
+  openChatButton.setAttribute("aria-expanded", "true");
+  openChatButton.textContent = "열린 채팅으로 이동";
+  $("#chat-title").focus();
+  $("#chat-panel").scrollIntoView({ block: "start", behavior: "smooth" });
+});
+$("#close-chat").addEventListener("click", () => {
+  closeChat();
+  openChatButton.focus();
 });
