@@ -1,3 +1,4 @@
 vendor/pdfjs/
 vendor/tesseract/
 __pycache__/
+/agent-connection.local.json
