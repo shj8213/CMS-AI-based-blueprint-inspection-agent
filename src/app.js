@@ -1,3 +1,4 @@
+import { buildDxfAgentMessage } from "./agent-input.js";
 import { readDxf } from "./dxf.js";
 import { readPdf } from "./pdf.js";
 import { AgentResultError } from "./agent-result.js";
@@ -263,8 +264,18 @@ function renderResult() {
     return option;
   }));
   $("#page-label").textContent = result.format === "PDF" ? "페이지" : "도면";
+  renderAgentInput();
   offset = 0;
   renderPage();
+}
+
+function renderAgentInput() {
+  const isDxf = result?.format === "DXF";
+  $("#agent-input-card").hidden = !isDxf;
+  $("#agent-input-status").textContent = "";
+  const text = isDxf ? buildDxfAgentMessage(result, chosenFile.name) : "";
+  $("#agent-input-text").value = text;
+  $("#agent-input-count").textContent = isDxf ? `${number(Array.from(text).length)}자 · 잘리지 않게 전체를 붙여넣으세요.` : "";
 }
 
 function showReview(hasDrawing, agentFileName = null) {
@@ -496,8 +507,24 @@ $("#back-button").addEventListener("click", () => {
   agentResultView.reset();
   list.replaceChildren();
   preview.replaceChildren();
+  renderAgentInput();
   $("#select-button").focus();
   window.scrollTo({ top: 0 });
+});
+$("#copy-agent-input").addEventListener("click", async () => {
+  const textarea = $("#agent-input-text");
+  const text = textarea.value;
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    if (textarea.value !== text) return;
+    $("#agent-input-status").textContent = "복사했어요. Copilot Studio의 ③ 도면 검토 에이전트 새 대화에 붙여넣으세요.";
+  } catch {
+    if (textarea.value !== text) return;
+    textarea.focus();
+    textarea.select();
+    $("#agent-input-status").textContent = "자동 복사가 막혀 있어요. 선택된 내용을 Ctrl+C로 직접 복사해 주세요.";
+  }
 });
 pageSelect.addEventListener("change", () => {
   offset = 0;
