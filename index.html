@@ -212,6 +212,8 @@
       }
       .start-button:hover:not(:disabled) { background: #1d4fc2; }
       .start-button:disabled { cursor: not-allowed; background: #b7c5df; }
+      .local-read-button { width: 100%; margin-top: 10px; min-height: 42px; }
+      #cancel-agent { margin-top: 10px; }
 
       .status {
         align-self: flex-start;
@@ -295,6 +297,7 @@
       .read-message.error { padding: 12px; color: #9c252a; background: #fff0f0; border-radius: 9px; }
       .read-message:empty { display: none; }
       .reading-results { margin: 18px 0; }
+      .reading-results[hidden], .review-layout[hidden] { display: none; }
       .reading-results p, .reading-results li { font-size: 13px; line-height: 1.7; }
       .reading-results ul { padding-left: 20px; color: #855b12; }
       .result-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 14px 0; }
@@ -309,9 +312,46 @@
       #drawing-preview .uncertain { stroke: #bf7a00; stroke-dasharray: 4 3; }
       #drawing-preview text.uncertain { fill: #8a5700; stroke: none; }
       .preview-note { margin: 12px 0 0; color: #68758a; font-size: 12px; line-height: 1.6; }
-      .result-navigation { display: flex; align-items: center; gap: 12px; margin-top: 12px; font-size: 12px; }
       .agent-input-text { width: 100%; margin-top: 6px; padding: 10px; border: 1px solid #d5deec; border-radius: 9px; font: 12px/1.5 ui-monospace, Consolas, monospace; resize: vertical; }
       .transfer-notice { padding: 12px; border: 1px solid #e5c777; border-radius: 9px; background: #fff8e6; color: #70520b; font-size: 13px; line-height: 1.7; }
+      .result-navigation { display: flex; align-items: center; gap: 12px; margin-top: 12px; font-size: 12px; }
+      .agent-entry { margin-top: 16px; }
+      .saved-match { margin: 12px 0; padding: 12px; border-radius: 10px; background: #edf7f0; font-size: 12px; line-height: 1.6; }
+      .saved-match p { margin: 0 0 8px; color: #17653b; font-weight: 700; }
+      .history-list { margin: 10px 0 0; padding: 0; list-style: none; }
+      .history-list .file-row .select-button { margin-left: auto; flex: 0 0 auto; }
+      .history-list .remove-button { margin-left: 0; }
+      .history-actions { margin-top: 10px; text-align: right; }
+      .verify-label { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; font-size: 14px; white-space: nowrap; }
+      .reference-box { margin-top: 12px; padding: 12px; border: 1px solid #d8dee8; border-radius: 8px; }
+      .reference-box p { margin: 0 0 8px; font-size: 15px; }
+      .reference-status { min-height: 1em; font-size: 14px; }
+      .agent-results { margin: 18px 0; }
+      .agent-results p, .agent-results label { font-size: 13px; line-height: 1.7; }
+      .agent-results label { display: block; margin-bottom: 6px; font-weight: 700; }
+      .agent-results textarea {
+        width: 100%;
+        min-height: 150px;
+        resize: vertical;
+        padding: 12px;
+        border: 1px solid #c3cee0;
+        border-radius: 9px;
+        font: 12px/1.6 ui-monospace, monospace;
+      }
+      .agent-results h3 { margin: 24px 0 10px; font-size: 15px; }
+      .agent-summary { padding: 12px; border-radius: 9px; background: #f5f7fb; font-size: 13px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+      .agent-summary ul { margin: 0; padding-left: 20px; }
+      .agent-summary li + li { margin-top: 6px; }
+      .agent-overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin: 0; }
+      .agent-overview div { min-width: 0; padding: 10px; border-radius: 9px; background: #f5f7fb; }
+      .agent-overview dt { color: #53617a; font-size: 12px; font-weight: 700; }
+      .agent-overview dd { margin: 5px 0 0; font-size: 13px; overflow-wrap: anywhere; }
+      .agent-results table { min-width: 660px; }
+      #agent-confirmations table { min-width: 0; }
+      .agent-details { margin-top: 12px; border: 1px solid #e1e7f0; border-radius: 10px; }
+      .agent-details summary { padding: 12px; cursor: pointer; font-size: 13px; font-weight: 700; }
+      .agent-details-content { padding: 0 12px 12px; }
+      .agent-empty { color: #53617a; }
 
       @media (max-width: 740px) {
         .page { width: min(100% - 28px, 540px); }
@@ -364,14 +404,41 @@
               >
             </div>
             <div id="file-list" aria-live="polite"></div>
-            <p class="privacy-note">파일은 서버로 보내지 않고 이 브라우저 안에서만 읽어요. 스캔 PDF의 글자는 OCR로 찾으며, 인식 결과는 원본과 비교해 주세요.</p>
+            <p class="privacy-note">②로 분석하면 PDF가 Microsoft에 전송되고 사용량이 발생할 수 있어요. 첨부 파일은 대화의 마지막 활동 이후 28일 동안 보관될 수 있어요. DXF는 PDF로 변환해 주세요.</p>
+            <p class="privacy-note">브라우저에서만 읽기를 선택하면 파일을 외부로 보내지 않아요. 스캔 PDF의 글자는 OCR로 찾으므로 원본과 비교해 주세요.</p>
             <p class="privacy-note">확인용 예제 받기: <a href="./tests/fixtures/simple.dxf" download>DXF</a> · <a href="./tests/fixtures/simple.pdf" download>일반 PDF</a> · <a href="./tests/fixtures/scan.pdf" download>스캔 PDF</a></p>
-            <p class="privacy-note">검토 시험용 DXF 받기: <a href="./tests/fixtures/review-a.dxf" download>예제 A</a> · <a href="./tests/fixtures/review-b.dxf" download>예제 B</a> · <a href="./tests/fixtures/review-c.dxf" download>예제 C</a> — 개인정보·기밀이 없는 가상 자료예요.</p>
-            <p class="read-message" id="read-progress" role="status"></p>
+                        <p class="privacy-note">검토 시험용 DXF 받기: <a href="./tests/fixtures/review-a.dxf" download>예제 A</a> · <a href="./tests/fixtures/review-b.dxf" download>예제 B</a> · <a href="./tests/fixtures/review-c.dxf" download>예제 C</a> — 개인정보·기밀이 없는 가상 자료예요.</p>
+                        <p class="read-message" id="read-progress" role="status"></p>
             <p class="read-message error" id="read-error" role="alert"></p>
-            <button class="start-button" id="start-button" type="button" disabled>도면 읽기</button>
+            <div class="saved-match" id="saved-match" hidden>
+              <p id="saved-match-text"></p>
+              <button class="select-button" id="open-saved-match" type="button">저장된 결과 바로 보기</button>
+            </div>
+            <button class="start-button" id="agent-start-button" type="button" disabled>②로 도면 분석하기</button>
+            <button class="select-button local-read-button" id="start-button" type="button" disabled>이 브라우저에서만 읽기</button>
+            <button class="select-button" id="cancel-agent" type="button" hidden>기다리기 중단</button>
           </section>
-          <p class="bottom-note">선·원·글자를 읽는 첫 단계예요. DXF 결과는 복사해서 Studio 검토 에이전트에 직접 전달할 수 있어요. 자동 검토·가공방법 추천·수정 기능은 아직 없어요.</p>
+          <p class="bottom-note">②는 도면을 읽어 정리해요. 도면의 정확성 판단·가공방법 추천·수정 기능은 아직 연결되지 않았어요.</p>
+          <section class="card upload-panel agent-entry" id="history-panel" aria-labelledby="history-title" hidden>
+            <h2 id="history-title">저장된 ② 분석 결과</h2>
+            <p class="subtext">분석이 끝난 결과는 이 컴퓨터의 브라우저에 자동 저장돼요. 다시 기다리지 않고 바로 열 수 있어요.</p>
+            <ul class="history-list" id="history-list"></ul>
+            <p class="privacy-note">저장된 결과는 외부로 보내지 않지만, 이 브라우저를 쓰는 사람은 볼 수 있어요. 필요 없으면 삭제해 주세요. 최근 20개까지 보관해요.</p>
+            <div class="reference-box">
+              <p><strong>② 학습용 참고 예제</strong> 결과를 도면과 직접 비교해 맞으면 <strong>확인 완료</strong>를 체크하세요. 체크한 결과만 모아 파일로 내려받고, 그 파일을 Copilot Studio ②의 지식에 올리면 다음 분석 때 읽는 방식을 참고해요.</p>
+              <p class="privacy-note">파일에는 파일 이름과 좌표는 빠지지만 도면에 적힌 치수·글자는 들어가요. 올리면 팀원과 Microsoft 서비스에서 볼 수 있으니, 공개해도 되는 도면만 체크하세요.</p>
+              <button class="select-button" id="download-references" type="button" disabled>참고 예제 파일 내려받기 (0개)</button>
+              <p class="reference-status" id="reference-status" aria-live="polite"></p>
+            </div>
+            <div class="history-actions">
+              <button class="select-button" id="clear-history" type="button">저장된 결과 모두 삭제</button>
+            </div>
+          </section>
+          <section class="card upload-panel agent-entry" aria-labelledby="agent-entry-title">
+            <h2 id="agent-entry-title">기존 ② 분석 결과 보기</h2>
+            <p class="subtext">이미 받은 ②의 결과가 있을 때만 직접 입력해 볼 수 있어요.</p>
+            <button class="select-button" id="agent-result-only" type="button">기존 결과 직접 보기</button>
+          </section>
         </section>
 
         <section class="screen" id="review-screen" aria-labelledby="result-title" hidden>
@@ -405,6 +472,81 @@
               <span id="result-range"></span>
               <button class="select-button" id="next-results" type="button">다음 목록</button>
             </div>
+          </section>
+
+          <section class="card agent-results" id="agent-result-panel" aria-labelledby="agent-result-title">
+            <h2 id="agent-result-title">② 도면 분석 결과</h2>
+            <p class="read-message" id="agent-result-progress" role="status"></p>
+            <p class="read-message error" id="agent-result-error" role="alert"></p>
+
+            <div id="agent-result-output" hidden>
+              <h3>전체 요약</h3>
+              <div class="agent-summary" id="agent-summary"></div>
+              <h3>먼저 확인할 내용 <span id="agent-confirmation-count"></span></h3>
+              <p class="subtext">읽지 못한 범위나 확인이 필요한 항목이에요. 원본 도면과 비교해 주세요.</p>
+              <div id="agent-confirmations"></div>
+
+              <h3>읽은 내용</h3>
+              <dl class="agent-overview">
+                <div><dt>전체 상태</dt><dd id="agent-status"></dd></div>
+                <div><dt>②가 기록한 파일</dt><dd id="agent-file-name"></dd></div>
+                <div><dt>페이지</dt><dd id="agent-pages"></dd></div>
+                <div><dt>뷰별 판독 범위</dt><dd id="agent-coverage"></dd></div>
+              </dl>
+              <p class="subtext">‘완료’는 읽기 상태일 뿐 설계 적합성을 보증하지 않아요. 읽지 못한 내용도 오류나 누락으로 단정하지 않아요. 전송 과정에서 ②가 기록한 파일 이름이 달라질 수 있어요.</p>
+
+              <details class="agent-details">
+                <summary>분석 과정과 상세 목록 보기</summary>
+                <div class="agent-details-content">
+                  <h3>1~6단계 결과</h3>
+                  <div id="agent-stages"></div>
+                  <h3>상세 목록</h3>
+                  <p class="subtext">표가 화면보다 넓으면 표 안에서 좌우로 밀어 볼 수 있어요.</p>
+                  <details class="agent-details">
+                    <summary>뷰별 판독 범위 <span id="agent-view-count"></span></summary>
+                    <div class="agent-details-content" id="agent-views"></div>
+                  </details>
+                  <details class="agent-details">
+                    <summary>형상과 속성 <span id="agent-feature-count"></span></summary>
+                    <div class="agent-details-content" id="agent-features"></div>
+                  </details>
+                  <details class="agent-details">
+                    <summary>치수와 형상 연결 <span id="agent-dimension-count"></span></summary>
+                    <div class="agent-details-content" id="agent-dimensions"></div>
+                  </details>
+                  <details class="agent-details">
+                    <summary>공차·기하공차·표면거칠기 <span id="agent-specification-count"></span></summary>
+                    <div class="agent-details-content" id="agent-specifications"></div>
+                  </details>
+                  <details class="agent-details">
+                    <summary>표제란·주기 및 기타 요소 <span id="agent-other-count"></span></summary>
+                    <div class="agent-details-content" id="agent-other-elements"></div>
+                  </details>
+                  <details class="agent-details">
+                    <summary>치수 합계 기록 <span id="agent-chain-count"></span></summary>
+                    <div class="agent-details-content" id="agent-chains"></div>
+                  </details>
+                </div>
+              </details>
+            </div>
+            <details class="agent-details" id="agent-manual">
+              <summary>기존 결과 직접 입력 (시험용)</summary>
+              <div class="agent-details-content">
+                <p class="subtext" id="agent-result-help">
+                  이미 받은 ②의 총 분석과 JSON을 함께 복사하거나 JSON만 붙여 넣으세요.
+                  원본 도면과 같은 결과인지 직접 확인해 주세요.
+                </p>
+                <label for="agent-result-input">② 응답 또는 JSON</label>
+                <textarea id="agent-result-input" spellcheck="false" autocomplete="off" aria-describedby="agent-result-help"
+                  placeholder="②의 응답이나 JSON 전체를 여기에 붙여 넣으세요."></textarea>
+                <p class="privacy-note">
+                  직접 입력한 내용은 이 브라우저 안에서만 처리하며 별도로 저장하거나 전송하지 않아요.
+                  처음으로 돌아가거나 도면을 다시 선택하면 입력과 결과가 지워져요.
+                  <a href="./tests/fixtures/agent-result.json" target="_blank" rel="noopener">가상 예제 JSON 보기</a>
+                </p>
+                <button class="select-button" id="agent-result-show" type="button">결과 보기</button>
+              </div>
+            </details>
           </section>
 
           <section class="card reading-results" id="agent-input-card" aria-labelledby="agent-input-title" hidden>
