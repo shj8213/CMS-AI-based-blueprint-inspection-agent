@@ -77,7 +77,7 @@ export async function analyzeDrawingWithStudio(file, {
   pollIntervalMs = POLL_INTERVAL,
 } = {}) {
   if (!file || !file.name.toLowerCase().endsWith(".pdf")) {
-    throw new StudioConnectionError("② 자동 분석은 PDF만 지원해요. DXF는 PDF로 변환해 주세요.");
+    throw new StudioConnectionError("'도면 분석하기'는 PDF만 돼요. DXF는 '이 브라우저에서만 읽기'를 누르거나 PDF로 변환해 주세요.");
   }
   if (!file.size) throw new StudioConnectionError("빈 파일이에요. 내용이 있는 PDF를 선택해 주세요.");
   if (file.size > MAX_FILE_SIZE) throw new StudioConnectionError("PDF는 16MiB 이하로 선택해 주세요.");

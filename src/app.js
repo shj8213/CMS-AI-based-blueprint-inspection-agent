@@ -200,6 +200,9 @@ function showFile(file) {
     fileInput.value = "";
     $("#read-error").textContent = "DXF 또는 PDF 파일을 선택해 주세요.";
   }
+  if (extension === "dxf" && chosenFile) {
+    $("#read-progress").textContent = "DXF는 '이 브라우저에서만 읽기'로 볼 수 있어요. '도면 분석하기'는 PDF만 돼요.";
+  }
   renderFile();
   checkSavedMatch(chosenFile);
 }
