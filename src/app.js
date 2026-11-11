@@ -44,7 +44,7 @@ function setBusy(value, kind = null) {
   fileInput.disabled = value;
   $("#remove-file")?.toggleAttribute("disabled", value);
   startButton.textContent = value && kind === "local" ? "읽는 중…" : "이 브라우저에서만 읽기";
-  agentStartButton.textContent = value && kind === "agent" ? "② 분석 중…" : "②로 도면 분석하기";
+  agentStartButton.textContent = value && kind === "agent" ? "② 분석 중…" : "도면 분석하기";
   cancelAgentButton.hidden = !value || kind !== "agent";
   cancelAgentButton.disabled = false;
   for (const button of document.querySelectorAll("#history-panel button, #history-panel input, #open-saved-match")) button.disabled = value;

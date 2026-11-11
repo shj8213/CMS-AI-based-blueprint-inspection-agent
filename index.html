@@ -96,6 +96,32 @@
       }
       .workflow-action:disabled { cursor: not-allowed; opacity: .8; }
       .screen[hidden] { display: none; }
+      .steps {
+        display: flex;
+        gap: 8px;
+        max-width: 700px;
+        margin: 0 auto 20px;
+        padding: 0;
+        list-style: none;
+      }
+      .steps li {
+        flex: 1;
+        padding: 10px 6px;
+        border-radius: 10px;
+        color: #6b778c;
+        background: #e8edf5;
+        font-size: 14px;
+        text-align: center;
+      }
+      .steps li span { margin-right: 6px; font-weight: 800; }
+      .steps li.on { color: #fff; background: #245cdb; font-weight: 750; }
+      .more-info { max-width: 700px; margin: 16px auto 0; }
+      #upload-title { margin-bottom: 14px; }
+      .more-info > summary { cursor: pointer; color: #53617a; font-size: 14px; font-weight: 700; }
+      .more-info-body { padding-top: 10px; }
+      .more-info-body h3 { margin: 16px 0 8px; font-size: 14px; }
+      .reading-detail { max-width: none; margin: 0 0 18px; }
+      .reading-detail > .card { margin-top: 12px; }
       .card {
         min-width: 0;
         padding: 24px;
@@ -370,30 +396,28 @@
     <div class="page">
       <header>
         <div class="brand"><span class="brand-icon" aria-hidden="true">⌁</span>기계 도면 작업 도우미</div>
-        <div class="header-note">검도부터 수정본 제작까지</div>
+        <div class="header-note">도면 검토를 쉽게</div>
       </header>
 
       <main>
         <section class="screen" id="upload-screen" aria-labelledby="main-title">
           <div class="intro">
-            <div class="intro-label">기계 도면 작업 도우미</div>
-            <h1 id="main-title">도면을 올리고 작업을 시작하세요</h1>
-            <p>도면 검토, 가공방법 추천, 수정본 제작을 돕는 화면입니다.</p>
+            <h1 id="main-title">도면을 올리면 읽어 드려요</h1>
+            <p>도면을 올리고 버튼을 한 번 누르면 결과가 나와요.</p>
           </div>
+          <ol class="steps" aria-label="사용 순서">
+            <li class="on"><span>1</span>도면 올리기</li>
+            <li><span>2</span>분석하기</li>
+            <li><span>3</span>결과 보기</li>
+          </ol>
 
           <section class="card upload-panel" aria-labelledby="upload-title">
-            <div class="heading-row">
-              <div>
-                <h2 id="upload-title">도면 첨부</h2>
-                <p class="subtext">검토할 파일을 선택해 주세요.</p>
-              </div>
-              <span class="step">1단계</span>
-            </div>
+            <h2 id="upload-title">1. 도면 파일을 올려 주세요</h2>
 
             <div class="drop-area" id="drop-area">
               <div class="upload-icon" aria-hidden="true">↑</div>
-              <div class="drop-title">도면 파일을 여기에 끌어오세요</div>
-              <p class="drop-help">또는 버튼을 눌러 파일을 선택할 수 있어요</p>
+              <div class="drop-title">파일을 여기에 끌어 놓으세요</div>
+              <p class="drop-help">PDF 또는 DXF 파일을 고를 수 있어요</p>
               <button class="select-button" id="select-button" type="button">파일 선택</button>
               <input
                 class="hidden-input"
@@ -404,21 +428,29 @@
               >
             </div>
             <div id="file-list" aria-live="polite"></div>
-            <p class="privacy-note">②로 분석하면 PDF가 Microsoft에 전송되고 사용량이 발생할 수 있어요. 첨부 파일은 대화의 마지막 활동 이후 28일 동안 보관될 수 있어요. DXF는 PDF로 변환해 주세요.</p>
-            <p class="privacy-note">브라우저에서만 읽기를 선택하면 파일을 외부로 보내지 않아요. 스캔 PDF의 글자는 OCR로 찾으므로 원본과 비교해 주세요.</p>
-            <p class="privacy-note">확인용 예제 받기: <a href="./tests/fixtures/simple.dxf" download>DXF</a> · <a href="./tests/fixtures/simple.pdf" download>일반 PDF</a> · <a href="./tests/fixtures/scan.pdf" download>스캔 PDF</a></p>
-                        <p class="privacy-note">검토 시험용 DXF 받기: <a href="./tests/fixtures/review-a.dxf" download>예제 A</a> · <a href="./tests/fixtures/review-b.dxf" download>예제 B</a> · <a href="./tests/fixtures/review-c.dxf" download>예제 C</a> — 개인정보·기밀이 없는 가상 자료예요.</p>
-                        <p class="read-message" id="read-progress" role="status"></p>
+            <p class="privacy-note">도면을 분석하면 파일이 Microsoft 서비스로 전송돼요. 자세한 안내는 아래 ‘도움말과 예제’를 읽어 주세요.</p>
+            <p class="read-message" id="read-progress" role="status"></p>
             <p class="read-message error" id="read-error" role="alert"></p>
             <div class="saved-match" id="saved-match" hidden>
               <p id="saved-match-text"></p>
               <button class="select-button" id="open-saved-match" type="button">저장된 결과 바로 보기</button>
             </div>
-            <button class="start-button" id="agent-start-button" type="button" disabled>②로 도면 분석하기</button>
+            <button class="start-button" id="agent-start-button" type="button" disabled>도면 분석하기</button>
             <button class="select-button local-read-button" id="start-button" type="button" disabled>이 브라우저에서만 읽기</button>
             <button class="select-button" id="cancel-agent" type="button" hidden>기다리기 중단</button>
           </section>
-          <p class="bottom-note">②는 도면을 읽어 정리해요. 도면의 정확성 판단·가공방법 추천·수정 기능은 아직 연결되지 않았어요.</p>
+          <details class="more-info">
+            <summary>도움말과 예제</summary>
+            <div class="more-info-body">
+              <p class="privacy-note">도면 분석을 선택하면 PDF가 Microsoft에 전송되고 사용량이 발생할 수 있어요. 첨부 파일은 대화의 마지막 활동 이후 28일 동안 보관될 수 있어요. DXF는 PDF로 변환해 주세요.</p>
+              <p class="privacy-note">‘이 브라우저에서만 읽기’를 선택하면 파일을 외부로 보내지 않아요. 스캔 PDF의 글자는 OCR로 찾으므로 원본과 비교해 주세요.</p>
+              <p class="privacy-note">확인용 예제 받기: <a href="./tests/fixtures/simple.dxf" download>DXF</a> · <a href="./tests/fixtures/simple.pdf" download>일반 PDF</a> · <a href="./tests/fixtures/scan.pdf" download>스캔 PDF</a></p>
+              <p class="privacy-note">검토 시험용 DXF 받기: <a href="./tests/fixtures/review-a.dxf" download>예제 A</a> · <a href="./tests/fixtures/review-b.dxf" download>예제 B</a> · <a href="./tests/fixtures/review-c.dxf" download>예제 C</a> — 개인정보·기밀이 없는 가상 자료예요.</p>
+              <p class="privacy-note">지금은 도면을 읽어 정리하는 기능만 연결돼 있어요. 도면이 맞는지 판단하는 기능은 아직 없어요.</p>
+              <h3>이미 받은 분석 결과가 있나요?</h3>
+              <button class="select-button" id="agent-result-only" type="button">기존 결과 직접 보기</button>
+            </div>
+          </details>
           <section class="card upload-panel agent-entry" id="history-panel" aria-labelledby="history-title" hidden>
             <h2 id="history-title">저장된 ② 분석 결과</h2>
             <p class="subtext">분석이 끝난 결과는 이 컴퓨터의 브라우저에 자동 저장돼요. 다시 기다리지 않고 바로 열 수 있어요.</p>
@@ -434,11 +466,6 @@
               <button class="select-button" id="clear-history" type="button">저장된 결과 모두 삭제</button>
             </div>
           </section>
-          <section class="card upload-panel agent-entry" aria-labelledby="agent-entry-title">
-            <h2 id="agent-entry-title">기존 ② 분석 결과 보기</h2>
-            <p class="subtext">이미 받은 ②의 결과가 있을 때만 직접 입력해 볼 수 있어요.</p>
-            <button class="select-button" id="agent-result-only" type="button">기존 결과 직접 보기</button>
-          </section>
         </section>
 
         <section class="screen" id="review-screen" aria-labelledby="result-title" hidden>
@@ -450,6 +477,8 @@
             <button class="back-button" id="back-button" type="button">도면 다시 선택</button>
           </div>
 
+          <details class="more-info reading-detail">
+          <summary>읽어낸 선·원·글자 자세히 보기</summary>
           <section class="card reading-results" aria-labelledby="reading-title">
             <h2 id="reading-title">읽어낸 선·원·글자</h2>
             <p id="reading-summary"></p>
@@ -473,6 +502,7 @@
               <button class="select-button" id="next-results" type="button">다음 목록</button>
             </div>
           </section>
+          </details>
 
           <section class="card agent-results" id="agent-result-panel" aria-labelledby="agent-result-title">
             <h2 id="agent-result-title">② 도면 분석 결과</h2>
@@ -572,56 +602,17 @@
 
             <div class="review-side">
               <section class="workflow-card" aria-labelledby="feedback-title">
-                <div class="heading-row">
-                  <div>
-                    <h2 id="feedback-title">검도 결과와 피드백</h2>
-                    <p class="subtext">도면에서 확인할 위치와 이유를 살펴봅니다.</p>
-                  </div>
-                  <span class="status">검토 전</span>
-                </div>
-
-                <div class="legend" aria-label="색깔별 검토 결과 안내">
-                  <span class="legend-item"><span class="dot red"></span>오류</span>
-                  <span class="legend-item"><span class="dot yellow"></span>확인 필요</span>
-                  <span class="legend-item"><span class="dot blue"></span>개선 제안</span>
-                  <span class="legend-item"><span class="dot green"></span>정상</span>
-                </div>
+                <h2 id="feedback-title">고칠 곳 안내</h2>
+                <p class="subtext">어디가 문제인지, 왜 문제인지, 어떻게 고치는지 알려드려요.</p>
 
                 <div class="feedback" aria-live="polite">
                   <span class="info-icon" aria-hidden="true">안내</span>
                   <div>
-                    <strong>아직 검도 결과가 없어요</strong>
-                    <p>검도 기능이 연결되면 위치별 문제와 근거, 수정 피드백이 표시됩니다.</p>
+                    <strong>아직 안내할 내용이 없어요</strong>
+                    <p>지금은 도면을 읽은 결과만 볼 수 있어요. 도면이 맞는지 확인하는 기능이 연결되면 여기에 쉬운 말로 표시돼요.</p>
                   </div>
                 </div>
               </section>
-
-              <div class="workflow-sections">
-                <section class="workflow-card" aria-labelledby="process-title">
-                  <h2 id="process-title">가공방법 추천</h2>
-                  <p class="subtext">도면의 모양과 재료를 바탕으로 만들 방법과 이유를 제안합니다.</p>
-                  <div class="feedback">
-                    <span class="info-icon" aria-hidden="true">안내</span>
-                    <div>
-                      <strong>가공방법 추천 전</strong>
-                      <p>추천 기능이 연결되면 가능한 방법과 선택 근거가 표시됩니다.</p>
-                    </div>
-                  </div>
-                </section>
-
-                <section class="workflow-card" aria-labelledby="edit-title">
-                  <h2 id="edit-title">수정본 만들기</h2>
-                  <p class="subtext">수정 제안을 확인하고 승인한 내용만 원본과 별도의 수정본에 반영합니다.</p>
-                  <div class="feedback">
-                    <span class="info-icon" aria-hidden="true">안내</span>
-                    <div>
-                      <strong>수정 제안 전</strong>
-                      <p>원본 도면은 보존됩니다. 실제 수정 기능은 아직 연결되지 않았습니다.</p>
-                    </div>
-                  </div>
-                  <button class="workflow-action" type="button" disabled>수정 제안·미리보기·승인 기능 준비 중</button>
-                </section>
-              </div>
             </div>
           </div>
         </section>
