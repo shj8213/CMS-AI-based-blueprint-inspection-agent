@@ -4,6 +4,9 @@
 
 ② 도면 분석 에이전트의 단계별 지침과 확인 방법은 [analyzer-README.md](analyzer-README.md)에 있습니다.
 
+연습용 PDF 한글 추출 문제(#56)의 로컬 재현·변환표 보완·Studio 비교와 남은 한계는
+[PDF 글자 추출 조사](pdf-text-encoding-investigation.md)에 있습니다.
+
 **이 자료는 시험용 에이전트의 지침과 가상 입력 시험 기록입니다. 완성된 제품이나 모든 누락을 찾는다는 보증이 아닙니다.** #31의 사람 대조는 V1 시험 결과를 대상으로 했으며, 결과는 [대조 기록 댓글](https://github.com/shj8213/CMS-AI-based-blueprint-inspection-agent/issues/31#issuecomment-6578837902)에 있습니다.
 
 ## 포함한 자료와 현재 상태
