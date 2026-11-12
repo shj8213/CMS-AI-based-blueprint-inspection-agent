@@ -23,7 +23,7 @@
 1. 개인정보 없는 가상 DXF(`tests/fixtures/review-a.dxf`, `review-b.dxf`, `review-c.dxf`, `simple.dxf`)를 Studio 테스트 창에 올려요.
 2. 기대 결과: 선·원·글자와 위치가 ② 형식 JSON(`schema_version` 1.1)으로 나와요. 읽지 못한 부분은 "확인 필요"로 표시돼요.
 3. 실패하면 이유를 쉬운 말로 알려 주고 "문제없음"이라고 하지 않아요.
-4. 홈페이지 `studio-connection.js`는 지금 PDF만 보내요. Studio 시험이 통과한 뒤 별도 작업으로 DXF 전송을 열어요.
+4. 홈페이지는 DXF를 직접 읽어 그 결과(선·원·글자)를 글로 ② 에이전트에 보내요(`studio-connection.js`의 `textMessage`). ② 에이전트가 이 글을 DXF 분석 자료로 받아 답하는지는 Studio에서 시험해야 해요. 그래서 Studio 도구 추가(이 문서)는 원본 DXF 파일을 직접 분석시키고 싶을 때의 선택 사항이에요.
 
 ## 되돌리는 방법
 Studio 지침을 이전 버전으로 되돌리고 추가한 도구를 끄면 돼요. 홈페이지는 이 문서 때문에 바뀌지 않아요.
