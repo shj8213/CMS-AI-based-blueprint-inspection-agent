@@ -764,7 +764,6 @@ function studioMock({
       return response(uploadStatus === 200 ? { id: "sent-1" } : null, uploadStatus);
     }
     if (url.pathname.endsWith("/activities")) {
-      if (options.method === "POST") return response({ id: "sent-1" });
       return response(activityPages[page++] ?? { activities: [], watermark: String(page) });
     }
     throw new Error("예상하지 못한 연결 요청이에요.");
@@ -807,26 +806,6 @@ agentTest("② 연결: PDF와 요청을 보내고 최종 응답을 모아 반환
   const polls = mock.requests.filter(({ url }) => url.pathname.endsWith("/activities"));
   assert(polls.length === 2 && polls[1].url.searchParams.get("watermark") === "1");
   assert(mock.requests.every(({ options }) => options.credentials === "omit" && options.redirect === "error"));
-});
-
-agentTest("② 연결: DXF는 파일 대신 읽은 결과 글을 보내고 응답을 받음", async () => {
-  const mock = studioMock({
-    activityPages: [{ watermark: "1", activities: [
-      { id: "answer-1", type: "message", replyToId: "sent-1", text: "DXF 응답" },
-      { type: "event", name: "turn.complete", replyToId: "sent-1" },
-    ] }],
-  });
-  const progress = [];
-  const result = await analyzeDrawingWithStudio(new File(["x"], "도면.dxf"), {
-    fetchImpl: mock.fetchImpl, textMessage: "DXF 읽은 결과", onProgress: (message) => progress.push(message),
-    pollIntervalMs: 1, timeoutMs: 1000,
-  });
-  assert(result === "DXF 응답");
-  assert(progress.some((message) => message.includes("DXF 읽기 결과를 ②에 보내는 중")));
-  assert(!mock.requests.some(({ url }) => url.pathname.endsWith("/upload")), "DXF 원본 파일을 올리면 안 돼요.");
-  const post = mock.requests.find(({ url, options }) => url.pathname.endsWith("/activities") && options.method === "POST");
-  const activity = JSON.parse(post.options.body);
-  assert(activity.type === "message" && activity.text === "DXF 읽은 결과");
 });
 
 agentTest("② 연결: 지원하지 않는 파일·빈 PDF·크기 초과는 보내지 않음", async () => {

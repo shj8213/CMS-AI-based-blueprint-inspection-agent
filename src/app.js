@@ -200,6 +200,9 @@ function showFile(file) {
     fileInput.value = "";
     $("#read-error").textContent = "DXF 또는 PDF 파일을 선택해 주세요.";
   }
+  if (extension === "dxf" && chosenFile) {
+    $("#read-progress").textContent = "DXF는 '이 브라우저에서만 읽기'로 볼 수 있어요. '도면 분석하기'는 PDF만 돼요.";
+  }
   renderFile();
   checkSavedMatch(chosenFile);
 }
@@ -451,21 +454,8 @@ agentStartButton.addEventListener("click", async () => {
   setBusy(true, "agent");
   $("#read-error").textContent = "";
   try {
-    let textMessage = null;
-    if (file.name.toLowerCase().endsWith(".dxf")) {
-      $("#read-progress").textContent = "DXF를 읽는 중…";
-      const buffer = await file.arrayBuffer();
-      if (!buffer.byteLength) throw new StudioConnectionError("빈 파일이에요. 내용이 있는 DXF를 선택해 주세요.");
-      try {
-        textMessage = buildDxfAgentMessage(readDxf(buffer), file.name);
-      } catch (error) {
-        if (error instanceof StudioConnectionError) throw error;
-        throw new StudioConnectionError(`DXF를 읽지 못했어요. ${error.message}`);
-      }
-    }
     const response = await analyzeDrawingWithStudio(file, {
       signal: agentController.signal,
-      textMessage,
       onProgress: (message) => { $("#read-progress").textContent = message; },
     });
     agentResultView.reset();

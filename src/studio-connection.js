@@ -75,16 +75,12 @@ export async function analyzeDrawingWithStudio(file, {
   fetchImpl = fetch,
   timeoutMs = DEFAULT_TIMEOUT,
   pollIntervalMs = POLL_INTERVAL,
-  textMessage = null,
 } = {}) {
-  // textMessage가 있으면 파일 대신 홈페이지가 읽은 DXF 결과 글을 보내요.
-  if (textMessage === null) {
-    if (!file || !file.name.toLowerCase().endsWith(".pdf")) {
-      throw new StudioConnectionError("파일만 보낼 때는 PDF만 돼요. DXF는 홈페이지가 읽은 결과로 보내요.");
-    }
-    if (!file.size) throw new StudioConnectionError("빈 파일이에요. 내용이 있는 PDF를 선택해 주세요.");
-    if (file.size > MAX_FILE_SIZE) throw new StudioConnectionError("PDF는 16MiB 이하로 선택해 주세요.");
+  if (!file || !file.name.toLowerCase().endsWith(".pdf")) {
+    throw new StudioConnectionError("'도면 분석하기'는 PDF만 돼요. DXF는 '이 브라우저에서만 읽기'를 누르거나 PDF로 변환해 주세요.");
   }
+  if (!file.size) throw new StudioConnectionError("빈 파일이에요. 내용이 있는 PDF를 선택해 주세요.");
+  if (file.size > MAX_FILE_SIZE) throw new StudioConnectionError("PDF는 16MiB 이하로 선택해 주세요.");
 
   const controller = new AbortController();
   const abort = () => controller.abort();
@@ -146,33 +142,22 @@ export async function analyzeDrawingWithStudio(file, {
     const conversationUrl = new URL(`conversations/${encodeURIComponent(conversation.conversationId)}/`, base);
     const headers = { Authorization: `Bearer ${conversation.token}` };
     const userId = `dl_${crypto.randomUUID()}`;
-    let sent;
-    if (textMessage !== null) {
-      onProgress("DXF 읽기 결과를 ②에 보내는 중이에요…");
-      const messageResponse = await request(new URL("activities", conversationUrl), {
-        method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "message", from: { id: userId }, locale: "ko-KR", text: textMessage }),
-      });
-      sent = await readJson(messageResponse, "DXF 결과 전송");
-    } else {
-      const form = new FormData();
-      form.append("file", file.slice(0, file.size, "application/pdf"), file.name);
-      form.append("activity", new Blob([JSON.stringify({
-        type: "message",
-        from: { id: userId },
-        locale: "ko-KR",
-        text: REQUEST_TEXT,
-      })], { type: "application/vnd.microsoft.activity" }));
-      const uploadUrl = new URL("upload", conversationUrl);
-      uploadUrl.searchParams.set("userId", userId);
+    const form = new FormData();
+    form.append("file", file.slice(0, file.size, "application/pdf"), file.name);
+    form.append("activity", new Blob([JSON.stringify({
+      type: "message",
+      from: { id: userId },
+      locale: "ko-KR",
+      text: REQUEST_TEXT,
+    })], { type: "application/vnd.microsoft.activity" }));
+    const uploadUrl = new URL("upload", conversationUrl);
+    uploadUrl.searchParams.set("userId", userId);
 
-      onProgress("PDF를 ②에 보내는 중이에요…");
-      const uploadResponse = await request(uploadUrl, { method: "POST", headers, body: form });
-      sent = await readJson(uploadResponse, "PDF 전송");
-    }
+    onProgress("PDF를 ②에 보내는 중이에요…");
+    const uploadResponse = await request(uploadUrl, { method: "POST", headers, body: form });
+    const sent = await readJson(uploadResponse, "PDF 전송");
     if (typeof sent?.id !== "string" || !sent.id) {
-      throw new StudioConnectionError("보낸 내용이 정상적으로 전달됐는지 확인할 수 없어요.");
+      throw new StudioConnectionError("PDF가 정상적으로 전달됐는지 확인할 수 없어요.");
     }
 
     onProgress("②가 도면을 분석하고 있어요. 몇 분 정도 걸릴 수 있어요…");
@@ -213,8 +198,8 @@ export async function analyzeDrawingWithStudio(file, {
   } catch (error) {
     if (controller.signal.aborted) {
       throw new StudioConnectionError(timedOut
-        ? "② 응답을 기다리는 시간이 초과됐어요. 이미 보낸 도면의 분석은 계속될 수 있어요."
-        : "화면에서 기다리기를 중단했어요. 도면을 이미 보냈다면 분석은 계속될 수 있어요.");
+        ? "② 응답을 기다리는 시간이 초과됐어요. 이미 보낸 PDF의 분석은 계속될 수 있어요."
+        : "화면에서 기다리기를 중단했어요. PDF를 이미 보냈다면 분석은 계속될 수 있어요.");
     }
     if (error instanceof StudioConnectionError) throw error;
     throw new StudioConnectionError("②에 연결하지 못했어요. 인터넷과 연결 설정을 확인해 주세요.", { cause: error });
