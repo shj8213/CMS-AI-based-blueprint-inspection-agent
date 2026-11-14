@@ -1,4 +1,13 @@
-import { buildDxfAgentInput, buildDxfAgentMessage, DXF_REQUEST } from "../src/agent-input.js";
+import {
+  buildDxfAgentInput,
+  buildDxfAgentMessage,
+  buildPdfAgentInput,
+  buildPdfAgentResponse,
+  DXF_REQUEST,
+  findScanPages,
+  isCodeReadResponse,
+  PDF_CODE_READER,
+} from "../src/agent-input.js";
 import { readDxf } from "../src/dxf.js";
 import { readPdf } from "../src/pdf.js";
 import { inferCircle, multiply, transform } from "../src/geometry.js";
@@ -17,7 +26,7 @@ import { getNetlifyConfig } from "../netlify/edge-functions/studio-config.js";
 import { config as netlifyStudioTokenConfig, handleNetlifyStudioToken } from "../netlify/edge-functions/studio-token.js";
 import { createAnalysisHistory, fileFingerprint } from "../src/analysis-history.js";
 import { buildReferenceExamples } from "../src/reference-examples.js";
-import { buildFeedbackMarkers, findTextMatches, pageMatches } from "../src/feedback-markers.js";
+import { buildFeedbackMarkers, findTextMatches, originDirection, pageMatches } from "../src/feedback-markers.js";
 
 const TEST_HISTORY_KEY = "blueprint-analysis-history-test";
 localStorage.removeItem(TEST_HISTORY_KEY);
@@ -1893,6 +1902,123 @@ agentTest("화면: ③ V4 JSON의 쉬운 지적·근거·한계를 표시하고 
   assert(app.querySelector("#review-agent-findings").textContent.includes("<script>"));
   app.querySelector("#back-button").click();
   assert(app.querySelector("#review-agent-result-output").hidden);
+});
+
+test("PDF 코드 읽기: 벡터 PDF를 ② 형식으로 바꾸고 페이지 크기·왼쪽 위 기준 좌표·단위를 넣음", async () => {
+  const result = await readPdf(await fixture("simple.pdf"), () => {}, { scanImages: false });
+  const before = JSON.stringify(result);
+  const input = buildPdfAgentInput(result, "simple.pdf");
+  assert(JSON.stringify(result) === before, "읽기 결과가 바뀌었어요.");
+  assert(input.schema_version === "1.1" && input.status === "부분 완료");
+  assert(input.source.format === "PDF" && input.source.reader === PDF_CODE_READER && input.source.page_count === 2);
+  assert(input.pages.length === 2 && input.pages.every((page) => page.width > 0 && page.height > 0));
+  near(input.pages[0].width, result.pages[0].width); near(input.pages[0].height, result.pages[0].height);
+  assert(input.pages.every((page) => originDirection(page.coordinate_origin) === "down"), "왼쪽 위 기준이어야 해요.");
+  assert(input.elements.every((element) => element.location.coordinate_unit === input.pages[0].coordinate_unit));
+  const text = input.elements.find((element) => element.raw_text === "Hello blueprint");
+  assert(text && text.category === "기타문자" && text.page_number === 1 && text.view_id === "P1");
+  near(text.location.x, 20); near(text.location.y, 50);
+  const [x0, y0, x1, y1] = text.location.bbox;
+  assert(x0 <= 20.01 && x1 > 60 && y0 < 50 && y1 <= 50.01, `글자 범위가 이상해요: ${text.location.bbox}`);
+  const line = input.elements.find((element) => element.category === "선" && element.page_number === 1);
+  assert(line.location.bbox.join() === "20,210,140,210", line.location.bbox.join());
+  const circle = input.elements.find((element) => element.category === "원");
+  assert(circle.needs_confirmation && circle.confidence === "중간", "곡선으로 추정한 원은 확인 필요예요.");
+  assert(!parseAgentResult(JSON.stringify(input)).data.features.length, "② 형식 검사기를 통과해야 해요.");
+  assert(isCodeReadResponse(buildPdfAgentResponse(result, "simple.pdf")) && !isCodeReadResponse(await agentFixture()));
+  const markers = buildFeedbackMarkers({ findings: [{ id: "R1", classification: "틀림", analysis_item_ids: [text.id] }] }, input);
+  const [placement] = markers[0].placements;
+  assert(placement?.source === "coordinate", `좌표로 동그라미를 그려야 해요: ${markers[0].reason}`);
+  assert(placement.x > 20 / input.pages[0].width && placement.y < 50 / input.pages[0].height, JSON.stringify(placement));
+  await rejects(() => buildPdfAgentInput({ format: "DXF", elements: [], warnings: [] }), "PDF");
+});
+test("PDF 코드 읽기: 스캔 PDF는 OCR 없이 스캔 페이지로 구분하고 변환을 거부", async () => {
+  const result = await readPdf(await fixture("scan.pdf"), () => {}, { scanImages: false });
+  assert(!result.elements.some((element) => element.source === "ocr" || element.source === "image"), "OCR을 하면 안 돼요.");
+  assert(findScanPages(result).join() === "1");
+  await rejects(() => buildPdfAgentInput(result, "scan.pdf"), "② 분석");
+  const mixed = await readPdf(await fixture("mixed.pdf"), () => {}, { scanImages: false });
+  assert(findScanPages(mixed).join() === "2", `혼합 PDF의 스캔 페이지: ${findScanPages(mixed)}`);
+  assert(!findScanPages(await readPdf(await fixture("simple.pdf"), () => {}, { scanImages: false })).length);
+});
+test("PDF 코드 읽기: 요소가 많으면 짧은 선부터 줄이고 한계에 적음", () => {
+  const line = (length, page = 1) => ({ kind: "line", start: { x: 0, y: 10 }, end: { x: length, y: 10 }, page });
+  const result = {
+    format: "PDF", unit: "포인트(1/72인치)", warnings: [], imagePages: [],
+    pages: [{ number: 1, width: 600, height: 400 }],
+    elements: [
+      ...Array.from({ length: 30 }, (_, index) => line(10 + index)),
+      ...Array.from({ length: 5 }, () => line(1)),
+      { kind: "text", text: "Ø20", position: { x: 5, y: 5 }, height: 3, rotation: 0, box: [5, 2, 12, 5], page: 1 },
+    ],
+  };
+  const input = buildPdfAgentInput(result, "many.pdf", { maxElements: 11 });
+  assert(input.elements.length === 11, `요소 수: ${input.elements.length}`);
+  assert(input.elements.some((element) => element.raw_text === "Ø20"), "글자는 남겨야 해요.");
+  const lengths = input.elements.filter((element) => element.category === "선").map((element) => element.location.bbox[2]);
+  assert(Math.min(...lengths) === 30, `긴 선부터 남겨야 해요: ${lengths}`);
+  assert(input.limitations.some((item) => item.includes("짧은 선 5개")));
+  assert(input.limitations.some((item) => item.includes("20개를 더 빼었습니다")));
+});
+test("PDF 코드 읽기: 축 연습 도면을 몇 초 안에 읽고 크기 제한 안에서 만듦", async () => {
+  const started = performance.now();
+  const result = await readPdf(await fixture("shaft-practice-challenge.pdf"), () => {}, { scanImages: false });
+  const response = buildPdfAgentResponse(result, "shaft-practice-challenge.pdf");
+  const seconds = (performance.now() - started) / 1000;
+  const input = JSON.parse(response);
+  assert(seconds < 15, `${seconds}초 걸렸어요.`);
+  assert(!findScanPages(result).length && input.elements.length > 0 && input.elements.length <= 1200);
+  assert(input.elements.some((element) => element.raw_text && element.location.bbox), "글자와 범위가 있어야 해요.");
+  assert(response.length < 400000, `자료가 너무 길어요: ${response.length}자`);
+  console.info("축 연습 도면 코드 읽기:", { seconds, elements: input.elements.length, characters: response.length });
+});
+test("화면: PDF 코드 읽기 결과로 ② 없이 ③ 피드백과 좌표 동그라미 표시", async () => {
+  if (!app) await openApp();
+  await selectFile("simple.pdf");
+  const expected = buildPdfAgentInput(await readPdf(await fixture("simple.pdf"), () => {}, { scanImages: false }), "simple.pdf");
+  const textId = expected.elements.find((element) => element.raw_text === "Hello blueprint").id;
+  const review = JSON.parse(new TextDecoder().decode(await fixture("reviewer-result-v2.json")));
+  review.findings = [{ ...review.findings[0], id: "R01", classification: "틀림", analysis_item_ids: [textId] }];
+  const mock = studioMock({ activityPages: [{ activities: [
+    { id: "review-answer", type: "message", replyToId: "sent-1", text: `\`\`\`json\n${JSON.stringify(review)}\n\`\`\`` },
+    { type: "event", name: "turn.complete", replyToId: "sent-1" },
+  ] }] });
+  const originalFetch = frame.contentWindow.fetch;
+  frame.contentWindow.fetch = mock.fetchImpl;
+  try {
+    const button = app.querySelector("#code-read-button");
+    assert(!button.disabled && app.querySelector("#agent-start-button").disabled, "동의 없이도 코드 읽기는 할 수 있어요.");
+    button.click();
+    await waitFor(() => app.querySelector("#upload-screen").getAttribute("aria-busy") === "false", "코드 읽기가 끝나지 않았어요.");
+    assert(!app.querySelector("#review-screen").hidden, app.querySelector("#read-error").textContent);
+    assert(app.querySelector("#agent-result-progress").textContent.includes("②를 거치지 않은"));
+    assert(!mock.requests.length, "코드 읽기만으로는 아무것도 보내면 안 돼요.");
+    assert(!app.querySelector("#feedback-actions").hidden);
+    assert(app.querySelector("#history-list").textContent.includes("simple.pdf"));
+    assert([...app.querySelectorAll("#history-list .file-type")].some((node) => node.textContent === "코드"));
+    app.querySelector("#feedback-start-button").click();
+    await waitFor(() => app.querySelectorAll(".feedback-marker").length === 1,
+      () => `동그라미가 그려지지 않았어요. ${app.querySelector("#agent-result-progress").textContent} ${app.querySelector("#agent-result-error").textContent} ${app.querySelector("#review-drawing-status").textContent}`);
+    const uploads = mock.requests.filter(({ url }) => url.pathname.endsWith("/upload"));
+    assert(uploads.length === 1, "②를 거치지 않고 ③에만 한 번 보내야 해요.");
+    assert(uploads[0].options.body.get("file").name === "simple.pdf", "원본 PDF를 함께 보내야 해요.");
+    const request = JSON.parse(await uploads[0].options.body.get("activity").text());
+    assert(request.text.includes("PDF 코드 읽기 결과") && request.text.includes(textId) && !request.text.includes("② 도면 분석 결과:"));
+    const marker = app.querySelector(".feedback-marker");
+    assert(marker.dataset.source !== "text", "코드 읽기 좌표로 그려야 해요.");
+  } finally {
+    frame.contentWindow.fetch = originalFetch;
+    if (!app.querySelector("#review-screen").hidden) app.querySelector("#back-button").click();
+  }
+});
+test("화면: 스캔 PDF는 코드 읽기 대신 ② 분석을 안내", async () => {
+  if (!app) await openApp();
+  await selectFile("scan.pdf");
+  app.querySelector("#code-read-button").click();
+  await waitFor(() => app.querySelector("#upload-screen").getAttribute("aria-busy") === "false", "코드 읽기가 끝나지 않았어요.");
+  assert(app.querySelector("#review-screen").hidden, "스캔 PDF는 결과 화면으로 넘어가면 안 돼요.");
+  const message = app.querySelector("#read-error").textContent;
+  assert(message.includes("스캔") && message.includes("도면 분석하기"), message);
 });
 
 const dxfOnly = new URLSearchParams(location.search).get("suite") === "dxf";

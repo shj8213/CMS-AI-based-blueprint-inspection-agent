@@ -1,4 +1,4 @@
-import { buildDxfAgentMessage } from "./agent-input.js";
+import { buildDxfAgentMessage, buildPdfAgentResponse, findScanPages, isCodeReadResponse } from "./agent-input.js";
 import { readDxf } from "./dxf.js";
 import { readPdf } from "./pdf.js";
 import { AgentResultError, parseAgentResult } from "./agent-result.js";
@@ -24,6 +24,7 @@ const fileInput = $("#file-input");
 const feedbackFileInput = $("#feedback-file-input");
 const startButton = $("#start-button");
 const agentStartButton = $("#agent-start-button");
+const codeReadButton = $("#code-read-button");
 const reviewerConsent = $("#reviewer-consent");
 const cancelAgentButton = $("#cancel-agent");
 const dropArea = $("#drop-area");
@@ -97,6 +98,7 @@ function updateAgentStartButton() {
     || !chosenFile.name.toLowerCase().endsWith(".pdf")
     || !reviewerConsent.checked
     || hostedSetupError;
+  codeReadButton.disabled = busy || !chosenFile || !chosenFile.name.toLowerCase().endsWith(".pdf");
 }
 
 function finishHostedChallenge(error, token = null) {
@@ -201,6 +203,7 @@ function setBusy(value, kind = null) {
   $("#remove-file")?.toggleAttribute("disabled", value);
   startButton.textContent = value && kind === "local" ? "읽는 중…" : "이 브라우저에서만 읽기";
   agentStartButton.textContent = value && kind === "agent" ? "② 분석 중…" : "도면 분석하기";
+  codeReadButton.textContent = value && kind === "code" ? "코드로 읽는 중…" : "PDF 코드로 빠르게 읽기 (초안)";
   cancelAgentButton.hidden = !value || kind !== "agent";
   cancelAgentButton.disabled = false;
   $("#feedback-start-button").disabled = value || !activeAnalysisEntry;
@@ -285,7 +288,8 @@ function renderHistory() {
     item.className = "file-row";
     const type = document.createElement("span");
     type.className = "file-type";
-    type.textContent = entry.kind === "review" ? "③" : entry.reviewResponse ? "②+③" : "②";
+    const analysisLabel = isCodeReadResponse(entry.response) ? "코드" : "②";
+    type.textContent = entry.kind === "review" ? "③" : entry.reviewResponse ? `${analysisLabel}+③` : analysisLabel;
     const info = document.createElement("div");
     info.className = "file-info";
     const name = document.createElement("div");
@@ -837,6 +841,62 @@ agentStartButton.addEventListener("click", async () => {
   }
 });
 
+// 벡터 PDF를 코드로 읽어 ② 형식 자료를 만들고, ②를 거치지 않고 ③ 피드백을 받을 수 있게 해요.
+codeReadButton.addEventListener("click", async () => {
+  if (!chosenFile || !chosenFile.name.toLowerCase().endsWith(".pdf") || busy) return;
+  const file = chosenFile;
+  setBusy(true, "code");
+  $("#read-error").textContent = "";
+  $("#agent-result-error").textContent = "";
+  $("#feedback-actions").hidden = true;
+  startProgress(false);
+  reportProgress("PDF를 코드로 읽는 중…");
+  const started = performance.now();
+  try {
+    const buffer = await file.arrayBuffer();
+    if (!buffer.byteLength) throw new Error("빈 파일이에요. 내용이 있는 PDF를 선택해 주세요.");
+    const pdfResult = await readPdf(buffer, reportProgress, { scanImages: false });
+    const scanPages = findScanPages(pdfResult);
+    if (scanPages.length) {
+      stopProgress(false);
+      $("#read-error").textContent =
+        `${scanPages.join(", ")}페이지가 스캔(그림) 페이지라 코드로 정확히 읽을 수 없어요. 전송 동의를 체크한 뒤 ‘도면 분석하기’(②)를 사용해 주세요.`;
+      return;
+    }
+    const response = buildPdfAgentResponse(pdfResult, file.name);
+    let fingerprint = file === chosenFile ? chosenFingerprint : null;
+    try {
+      fingerprint ??= await fileFingerprint(file);
+    } catch (error) {
+      console.error("도면 구분값 계산 실패:", error instanceof Error ? error.name : typeof error);
+    }
+    const saved = analysisHistory.save({ fileName: file.name, fingerprint, response });
+    activeAnalysisEntry = saved ?? { id: null, fileName: file.name, fingerprint: fingerprint ?? null, response, kind: "analysis" };
+    activeAnalysisFile = file;
+    if (saved) {
+      renderHistory();
+      await checkSavedMatch(file);
+    }
+    agentResultView.reset();
+    agentResultView.showResponse(response);
+    stopProgress(true);
+    showReview(false, file.name);
+    updateFeedbackAction();
+    const count = JSON.parse(response).elements.length;
+    const seconds = ((performance.now() - started) / 1000).toFixed(1);
+    $("#agent-result-progress").textContent =
+      `PDF를 코드로 읽었어요(${seconds}초, 요소 ${count}개). ②를 거치지 않은 자료예요. ‘피드백 받기’를 누르면 원본 PDF와 이 자료를 ③에 보내요.`
+      + (saved ? "" : " 브라우저에 저장하지는 못했어요.");
+  } catch (error) {
+    stopProgress(false);
+    console.error("PDF 코드 읽기 실패:", error instanceof Error ? error.name : typeof error);
+    $("#read-error").textContent = `코드로 읽지 못했어요. ${error.message}`;
+  } finally {
+    $("#read-progress").textContent = "";
+    setBusy(false);
+  }
+});
+
 async function requestFeedback(file = activeAnalysisFile) {
   if (!activeAnalysisEntry || busy) return;
   if (!file) {
@@ -882,6 +942,7 @@ async function requestFeedback(file = activeAnalysisFile) {
     }
     const reviewResponse = await reviewDrawingWithStudio(file, {
       analysisResult: activeAnalysisEntry.response,
+      analysisOrigin: isCodeReadResponse(activeAnalysisEntry.response) ? "code" : "agent",
       hostedAccess: hostedTokens,
       signal: agentController.signal,
       onProgress: (message) => {
