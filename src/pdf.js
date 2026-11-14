@@ -235,6 +235,22 @@ function hasSelectableTextInBox(texts, box, scale) {
   });
 }
 
+// Safari에서도 읽을 수 있도록 스트림의 비동기 반복(getTextContent 내부) 대신 표준 reader를 사용합니다.
+async function readTextItems(page) {
+  const items = [];
+  const reader = page.streamTextContent().getReader();
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      items.push(...value.items);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return items;
+}
+
 function openDocument(getDocument, buffer) {
   const assetUrl = (directory) => new URL(`../vendor/pdfjs/${directory}/`, import.meta.url).href;
   return getDocument({
@@ -269,9 +285,8 @@ export async function openPdfForFeedback(buffer) {
       if (!valid(number)) return null;
       const page = await document.getPage(number);
       const viewport = page.getViewport({ scale: 1 });
-      const content = await page.getTextContent();
       const texts = [];
-      for (const item of content.items) {
+      for (const item of await readTextItems(page)) {
         if (!("str" in item) || !item.str.trim()) continue;
         const matrix = multiply(viewport.transform, item.transform);
         const height = Math.hypot(matrix[2], matrix[3]);
