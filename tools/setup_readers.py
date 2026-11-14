@@ -19,7 +19,7 @@ TESSERACT = {
     "version": "6.0.1",
     "integrity": "/sPvMvrCtgxnNRCjbTYbr7BRu0yfWDsMZQ2a/T5aN/L1t8wUQN6tTWv6p6FwzpoEBA0jrN2UD2SX4QQFRdoDbA==",
     "files": {
-        "dist/tesseract.min.js", "dist/worker.min.js", "LICENSE",
+        "dist/tesseract.min.js", "dist/worker.min.js", "LICENSE.md",
         "dist/tesseract.min.js.LICENSE.txt", "dist/worker.min.js.LICENSE.txt",
     },
 }
