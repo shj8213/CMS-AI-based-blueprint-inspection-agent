@@ -1,0 +1,4 @@
+{
+  "tokenEndpoint": "https://default62ae463a9f124edf85444f6ca38345.24.environment.api.powerplatform.com/copilotstudio/agenticruntime/botsbyschema/cre4a_bot_GA1WSN/directline/token?api-version=2022-03-01-preview",
+  "reviewerTokenEndpoint": "https://default62ae463a9f124edf85444f6ca38345.24.environment.api.powerplatform.com/copilotstudio/agenticruntime/botsbyschema/cre4a_bot_DkQ5ej/directline/token?api-version=2022-03-01-preview"
+}
