@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "blueprint-inspection-homepage",
+  "main": "functions/worker.js",
+  "compatibility_date": "2026-11-11",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  "ratelimits": [
+    {
+      "name": "STUDIO_RATE_LIMITER",
+      "namespace_id": "2026111151",
+      "simple": {
+        "limit": 3,
+        "period": 60
+      }
+    }
+  ]
+}

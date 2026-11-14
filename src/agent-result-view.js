@@ -1,4 +1,10 @@
-import { AgentResultError, createAgentResultModel, displayValue, parseAgentResult } from "./agent-result.js";
+import {
+  AgentResultError,
+  createAgentResultModel,
+  createShaftSummary,
+  displayValue,
+  parseAgentResult,
+} from "./agent-result.js";
 
 const PAGE_SIZE = 50;
 const $ = (selector) => document.querySelector(selector);
@@ -103,10 +109,10 @@ function renderTable(container, label, columns, rows, emptyMessage) {
   showPage();
 }
 
-function renderSummary(summary) {
-  const container = $("#agent-summary");
+function renderSummary(summary, selector = "#agent-summary", emptyMessage = "총 분석 문장이 없어요. 아래의 읽은 내용과 확인할 내용을 살펴봐 주세요.") {
+  const container = $(selector);
   if (!summary) {
-    container.textContent = "총 분석 문장이 없어요. 아래의 읽은 내용과 확인할 내용을 살펴봐 주세요.";
+    container.textContent = emptyMessage;
     return;
   }
   const plainText = (text) => text.replace(/\*\*([^*\n]+)\*\*/g, "$1");
@@ -132,8 +138,122 @@ function renderSummary(summary) {
   container.replaceChildren(list);
 }
 
+function addReviewField(container, label, value, emptyText = "확인 필요") {
+  const row = document.createElement("p");
+  const name = document.createElement("strong");
+  name.textContent = `${label}: `;
+  row.append(name, document.createTextNode(displayValue(value, emptyText)));
+  container.append(row);
+}
+
+function renderReviewList(container, records, emptyMessage, renderRecord) {
+  container.replaceChildren();
+  if (!records.length) {
+    const empty = document.createElement("p");
+    empty.className = "agent-empty";
+    empty.textContent = emptyMessage;
+    container.append(empty);
+    return;
+  }
+  for (const record of records) container.append(renderRecord(record));
+}
+
+function renderReviewResult(data, responseSummary, message, analysisText) {
+  $("#agent-result-title").textContent = "③ 도면 검토 결과";
+  $("#result-title").textContent = "③ 도면 검토 결과";
+  $("#agent-result-output").hidden = true;
+  $("#review-agent-result-output").hidden = false;
+  let shaftSummary = "② 분석 결과가 제공되지 않아 축 도면 설명을 만들지 않았어요.";
+  if (analysisText) {
+    try {
+      shaftSummary = createShaftSummary(analysisText);
+    } catch (error) {
+      if (!(error instanceof AgentResultError)) throw error;
+      shaftSummary = "② 분석 결과 형식을 읽지 못해 축 도면 설명을 만들지 않았어요.";
+    }
+  }
+  $("#shaft-analysis-summary").textContent = shaftSummary;
+  $("#review-agent-status").textContent = data.status;
+  $("#review-agent-basis").textContent = data.review_basis;
+  $("#review-agent-pages").textContent =
+    `확인함: ${displayValue(data.reviewed_pages, "기록 없음")} · 확인하지 못함: ${displayValue(data.unreviewed_pages, "없음")}`;
+  $("#review-agent-human-status").textContent = data.human_review_status;
+  renderSummary(
+    data.summary || responseSummary,
+    "#review-agent-summary",
+    "요약이 없어요. 아래 지적과 남은 한계를 확인해 주세요.",
+  );
+
+  $("#review-agent-finding-count").textContent = `(${data.findings.length}개)`;
+  renderReviewList(
+    $("#review-agent-findings"),
+    data.findings,
+    "기록된 지적이 없어요. 원본 도면과 직접 비교해 주세요.",
+    (finding) => {
+      const card = document.createElement("article");
+      card.className = "review-finding";
+      const heading = document.createElement("h4");
+      heading.textContent = `${finding.classification} · ${finding.issue_type} · ${finding.id}`;
+      card.append(heading);
+      addReviewField(card, "② 항목 ID", finding.analysis_item_ids.join(", "), "없음");
+      addReviewField(card, "위치", finding.location);
+      addReviewField(card, "무엇이 문제인지", finding.what);
+      addReviewField(card, "왜 확인해야 하는지", finding.why);
+      addReviewField(card, "근거", finding.basis);
+      addReviewField(card, "어떻게 확인할지", finding.how_to_resolve);
+      addReviewField(card, "확인한 내용", finding.evidence);
+      if (finding.intent_hypothesis) {
+        addReviewField(
+          card,
+          "가능한 의도(추정)",
+          finding.intent_hypothesis.replace(/^(?:가능한 의도\(추정\):\s*)+/, ""),
+        );
+      }
+      addReviewField(card, "판단 근거·신뢰도", `${finding.confidence} · ${finding.confidence_reason}`);
+      addReviewField(card, "다음 확인", finding.next_check, "더 확인할 내용 없음");
+      return card;
+    },
+  );
+
+  $("#review-agent-not-missing-count").textContent = `(${data.not_missing.length}개)`;
+  renderReviewList(
+    $("#review-agent-not-missing"),
+    data.not_missing,
+    "이미 확인된 정보가 따로 기록되지 않았어요.",
+    (record) => {
+      const card = document.createElement("article");
+      card.className = "review-finding";
+      addReviewField(card, "확인된 정보", record.item);
+      addReviewField(card, "② 항목 ID", record.analysis_item_ids.join(", "), "없음");
+      addReviewField(card, "위치", record.location);
+      addReviewField(card, "누락이 아닌 이유", record.reason);
+      return card;
+    },
+  );
+
+  $("#review-agent-limitations-count").textContent = `(${data.limitations.length}개)`;
+  renderReviewList(
+    $("#review-agent-limitations"),
+    data.limitations,
+    "기록된 한계가 없어요. 원본 도면과 직접 비교해 주세요.",
+    (limitation) => {
+      const item = document.createElement("p");
+      item.className = "agent-empty";
+      item.textContent = limitation;
+      return item;
+    },
+  );
+  return message.includes("직접")
+    ? "직접 입력한 ③ 검토 결과를 표시했어요."
+    : "③ 검토 응답을 표시했어요.";
+}
+
 function renderResult(model) {
   const { data, source, coverage } = model;
+  $("#agent-result-title").textContent = "② 도면 분석 결과";
+  $("#result-title").textContent = "② 도면 분석 결과";
+  $("#review-agent-result-output").hidden = true;
+  $("#agent-result-output").hidden = false;
   const summary = model.summary.replace(/^(?:#{1,6}\s*)?(?:\*\*)?총 분석(?:\*\*)?[ \t]*[:：]?[ \t]*(?:\r?\n|$)/, "").trim();
   renderSummary(summary);
   $("#agent-status").textContent = requiredValue(data.status);
@@ -229,22 +349,33 @@ export function createAgentResultView() {
   const panel = $("#agent-result-panel");
   const input = $("#agent-result-input");
   const button = $("#agent-result-show");
+  const saveButton = $("#agent-result-save");
   const output = $("#agent-result-output");
+  const reviewOutput = $("#review-agent-result-output");
   const error = $("#agent-result-error");
   const progress = $("#agent-result-progress");
   let generation = 0;
 
-  function showResult(text, message) {
-    const model = createAgentResultModel(parseAgentResult(text));
-    renderResult(model);
+  function showResult(text, message, analysisText) {
+    const parsed = parseAgentResult(text);
+    if (parsed.data.schema_version === "2.0") {
+      progress.textContent = renderReviewResult(parsed.data, parsed.summary, message, analysisText);
+      return;
+    }
+    renderResult(createAgentResultModel(parsed));
     output.hidden = false;
     progress.textContent = message;
   }
 
   input.addEventListener("input", () => {
     error.textContent = "";
-    if (!output.hidden) {
+    saveButton.hidden = true;
+    saveButton.disabled = true;
+    if (!output.hidden || !reviewOutput.hidden) {
       output.hidden = true;
+      reviewOutput.hidden = true;
+      $("#agent-result-title").textContent = "② 도면 분석 결과";
+      $("#result-title").textContent = "② 분석 결과";
       progress.textContent = "입력이 바뀌었어요. 결과 보기를 다시 눌러 주세요.";
     }
   });
@@ -253,6 +384,7 @@ export function createAgentResultView() {
     const currentGeneration = ++generation;
     const text = input.value;
     output.hidden = true;
+    reviewOutput.hidden = true;
     error.textContent = "";
     progress.textContent = "결과를 정리하는 중이에요…";
     panel.setAttribute("aria-busy", "true");
@@ -262,6 +394,8 @@ export function createAgentResultView() {
     if (currentGeneration !== generation) return;
     try {
       showResult(text, "직접 입력한 결과를 표시했어요.");
+      saveButton.hidden = false;
+      saveButton.disabled = false;
     } catch (caught) {
       if (caught instanceof AgentResultError) {
         error.textContent = caught.message;
@@ -270,6 +404,8 @@ export function createAgentResultView() {
         error.textContent = "결과를 표시하는 중 예상하지 못한 오류가 났어요. 입력을 확인한 뒤 다시 시도해 주세요.";
       }
       progress.textContent = "";
+      saveButton.hidden = true;
+      saveButton.disabled = true;
     } finally {
       if (currentGeneration === generation) {
         panel.setAttribute("aria-busy", "false");
@@ -280,9 +416,9 @@ export function createAgentResultView() {
   });
 
   return {
-    showResponse(text) {
+    showResponse(text, analysisText = null) {
       error.textContent = "";
-      showResult(text, "②의 응답을 표시했어요.");
+      showResult(text, "②의 응답을 표시했어요.", analysisText);
     },
     openManual() {
       $("#agent-manual").open = true;
@@ -293,7 +429,12 @@ export function createAgentResultView() {
       input.value = "";
       input.disabled = false;
       button.disabled = false;
+      saveButton.hidden = true;
+      saveButton.disabled = true;
       output.hidden = true;
+      reviewOutput.hidden = true;
+      $("#agent-result-title").textContent = "② 도면 분석 결과";
+      $("#result-title").textContent = "② 분석 결과";
       error.textContent = "";
       progress.textContent = "";
       panel.setAttribute("aria-busy", "false");
@@ -303,6 +444,11 @@ export function createAgentResultView() {
         "#agent-specification-count", "#agent-other-count", "#agent-chain-count",
         "#agent-confirmations", "#agent-stages", "#agent-views", "#agent-features",
         "#agent-dimensions", "#agent-specifications", "#agent-other-elements", "#agent-chains",
+        "#review-agent-status", "#review-agent-basis", "#review-agent-pages", "#review-agent-human-status",
+        "#shaft-analysis-summary",
+        "#review-agent-summary", "#review-agent-finding-count", "#review-agent-findings",
+        "#review-agent-not-missing-count", "#review-agent-not-missing",
+        "#review-agent-limitations-count", "#review-agent-limitations",
       ]) $(selector).replaceChildren();
     },
   };
