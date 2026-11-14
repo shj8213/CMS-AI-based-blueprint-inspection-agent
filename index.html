@@ -395,17 +395,136 @@
         .review-drawing { min-height: 380px; }
         .review-header { align-items: flex-start; }
       }
+      /* 소개 화면 */
+      .hero { padding: 56px 0 40px; text-align: center; }
+      .hero-label { color: #1d4fc2; font-size: 14px; font-weight: 800; }
+      .hero h1 { margin: 14px 0 16px; font-size: clamp(32px, 6vw, 54px); line-height: 1.2; letter-spacing: -2px; }
+      .hero h1 strong { color: #1d4fc2; }
+      .hero p { max-width: 560px; margin: 0 auto 28px; color: #66738a; line-height: 1.8; }
+      .cta-button {
+        padding: 15px 34px;
+        border: 0;
+        border-radius: 999px;
+        color: #fff;
+        background: #245cdb;
+        font-size: 16px;
+        font-weight: 800;
+      }
+      .cta-button:hover { background: #1d4fc2; }
+      .intro-section { margin-top: 56px; text-align: center; }
+      .intro-section h2 { margin: 0 0 8px; font-size: clamp(22px, 4vw, 30px); letter-spacing: -1px; }
+      .intro-section > p { margin: 0 0 24px; color: #66738a; }
+      .feature-grid, .flow-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); text-align: left; }
+      .feature-card, .flow-card { padding: 22px; border: 1px solid #e1e7f0; border-radius: 17px; background: #fff; }
+      .feature-card h3, .flow-card h3 { margin: 0 0 8px; font-size: 16px; }
+      .feature-card p, .flow-card p { margin: 0; color: #66738a; font-size: 14px; line-height: 1.7; }
+      .flow-num {
+        display: grid;
+        width: 34px;
+        height: 34px;
+        margin-bottom: 12px;
+        place-items: center;
+        border-radius: 50%;
+        color: #fff;
+        background: #245cdb;
+        font-weight: 800;
+      }
+      .intro-bottom { margin: 56px 0 0; padding: 36px 20px; border-radius: 20px; background: #eaf1ff; text-align: center; }
+      .intro-bottom h2 { margin: 0 0 16px; font-size: 22px; }
+      .brand { cursor: pointer; background: none; border: 0; padding: 0; color: inherit; }
+
+      /* 업로드 화면: 주황색 포인트 */
+      #upload-screen .steps li.on { background: #f76707; }
+      #upload-screen .card { border-color: #ffd8a8; }
+      #upload-screen .drop-area { border-color: #ffa94d; background: #fff9f2; }
+      #upload-screen .drop-area.dragging { border-color: #f76707; background: #fff4e6; }
+      #upload-screen .upload-icon { color: #f76707; background: #ffe8cc; }
+      #upload-screen .start-button { background: #f76707; }
+      #upload-screen .start-button:hover:not(:disabled) { background: #e8590c; }
+      #upload-screen .start-button:disabled { background: #ffd8a8; }
+      #upload-screen .select-button:hover { background: #fff4e6; }
+      .progress-box { margin: 14px 0 6px; }
+      .progress-head { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 13px; color: #53617a; }
+      .progress-head strong { color: #e8590c; }
+      .progress-track { height: 10px; overflow: hidden; border-radius: 999px; background: #ffe8cc; }
+      .progress-fill { width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #ffa94d, #f76707); transition: width .5s ease; }
+      .feedback-notes { margin: 12px 0 0; padding-left: 18px; color: #53617a; font-size: 13px; line-height: 1.6; }
+      .feedback-list { display: grid; gap: 8px; margin: 12px 0 0; padding: 0; list-style: none; }
+      .feedback-list li { display: flex; gap: 10px; padding: 11px; border: 1px solid #ffd8a8; border-radius: 11px; background: #fff9f2; cursor: pointer; font-size: 13px; line-height: 1.6; transition: border-color .2s, box-shadow .2s; }
+      .feedback-list li:hover, .feedback-list li.active { border-color: #f76707; box-shadow: 0 4px 12px rgba(247, 103, 7, .18); }
+      .feedback-list .badge { display: grid; flex: 0 0 24px; width: 24px; height: 24px; place-items: center; border-radius: 50%; color: #fff; background: #f76707; font-size: 12px; font-weight: 800; }
+      .feedback-list strong { display: block; }
+      .feedback-list p { margin: 2px 0 0; color: #53617a; }
+      #drawing-preview .marker circle { fill: #f76707; stroke: #fff; stroke-width: 0.15%; }
+      #drawing-preview .marker text { fill: #fff; font-weight: 800; text-anchor: middle; dominant-baseline: central; stroke: none; }
+      #drawing-preview .marker.active circle { fill: #c92a2a; }
+      .feedback[hidden] { display: none; }
+      /* 소개 이후 화면은 흰 배경 */
+      :root:has(#intro-screen[hidden]) { background: linear-gradient(180deg, #fff 0, #fffaf4 420px, #fff6ec 100%) fixed; }
+      body:has(#intro-screen[hidden]) .brand-icon { color: #f76707; background: #ffe8cc; }
+      body:has(#intro-screen[hidden]) header { border-bottom-color: #f1f1f1; }
+      body:has(#intro-screen[hidden]) .steps li:not(.on) { background: #f4f4f4; }
+      body:has(#intro-screen[hidden]) .card { box-shadow: 0 2px 14px rgba(0, 0, 0, .05); }
+      /* 애니메이션 */
+      @keyframes fade-up { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+      @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+      .hero > * { animation: fade-up .7s ease both; }
+      .hero > :nth-child(2) { animation-delay: .1s; }
+      .hero > :nth-child(3) { animation-delay: .2s; }
+      .hero > :nth-child(4) { animation-delay: .3s; }
+      .hero .cta-button { animation: fade-up .7s ease .3s both, float 3s ease-in-out 1.2s infinite; }
+      .cta-button { transition: background .2s, box-shadow .2s; }
+      .cta-button:hover { box-shadow: 0 10px 24px rgba(36, 92, 219, .35); }
+      .reveal { opacity: 0; transform: translateY(28px); transition: opacity .6s ease, transform .6s ease; }
+      .reveal.visible { opacity: 1; transform: none; }
+      .feature-card, .flow-card { transition: transform .2s, box-shadow .2s, border-color .2s; }
+      .feature-card:hover, .flow-card:hover { transform: translateY(-4px); border-color: #7ba2f0; box-shadow: 0 10px 24px rgba(36, 92, 219, .12); }
+      #upload-screen:not([hidden]) { animation: fade-up .45s ease both; }
+      @media (prefers-reduced-motion: reduce) {
+        .hero > *, .hero .cta-button, #upload-screen { animation: none !important; }
+        .reveal { opacity: 1; transform: none; transition: none; }
+      }
     </style>
   </head>
   <body>
     <div class="page">
       <header>
-        <div class="brand"><span class="brand-icon" aria-hidden="true">⌁</span>기계 도면 작업 도우미</div>
+        <button class="brand" id="brand-home" type="button"><span class="brand-icon" aria-hidden="true">⌁</span>기계 도면 작업 도우미</button>
         <div class="header-note">도면 검토를 쉽게</div>
       </header>
 
       <main>
-        <section class="screen" id="upload-screen" aria-labelledby="main-title">
+        <section class="screen" id="intro-screen" aria-labelledby="intro-title">
+          <div class="hero">
+            <div class="hero-label">기계 도면 작업 도우미</div>
+            <h1 id="intro-title">도면 검토,<br><strong>올리면 끝나요.</strong></h1>
+            <p>도면을 올리면 선·원·치수를 읽고, 고칠 곳을 도면 위에 바로 알려 드려요.</p>
+            <button class="cta-button" id="start-intro" type="button">도면 올리러 가기</button>
+          </div>
+          <div class="intro-section">
+            <h2>이런 걸 해 드려요</h2>
+            <p>PDF와 DXF 도면을 지원해요.</p>
+            <div class="feature-grid">
+              <div class="feature-card"><h3>도면 읽기</h3><p>선, 원, 글자와 치수를 자동으로 찾아 정리해요.</p></div>
+              <div class="feature-card"><h3>피드백 안내</h3><p>고쳐야 할 곳을 글로 설명하고 도면 위에 표시해요.</p></div>
+            </div>
+          </div>
+          <div class="intro-section">
+            <h2>사용 순서</h2>
+            <p>세 단계로 끝나요.</p>
+            <div class="flow-grid">
+              <div class="flow-card"><div class="flow-num">1</div><h3>도면 올리기</h3><p>PDF 또는 DXF 파일을 끌어 놓아요.</p></div>
+              <div class="flow-card"><div class="flow-num">2</div><h3>분석하기</h3><p>버튼 한 번으로 도면을 읽어요.</p></div>
+              <div class="flow-card"><div class="flow-num">3</div><h3>피드백 보기</h3><p>도면 위에서 고칠 곳을 확인해요.</p></div>
+            </div>
+          </div>
+          <div class="intro-bottom">
+            <h2>지금 도면을 올려 보세요</h2>
+            <button class="cta-button" id="start-intro-bottom" type="button">시작하기</button>
+          </div>
+        </section>
+
+        <section class="screen" id="upload-screen" aria-labelledby="main-title" hidden>
           <div class="intro">
             <h1 id="main-title">도면을 올리면 읽어 드려요</h1>
             <p>도면 분석부터 검토 피드백과 수정 지원까지 돕는 도구예요. 현재는 1차로 축 도면 분석을 시험하고 있어요.</p>
@@ -434,6 +553,11 @@
             </div>
             <div id="file-list" aria-live="polite"></div>
             <p class="privacy-note">도면을 분석하면 파일이 Microsoft 서비스로 전송돼요. 자세한 안내는 아래 ‘도움말과 예제’를 읽어 주세요.</p>
+                        <div class="progress-box" id="progress-box" hidden>
+                          <div class="progress-head"><span id="progress-label"></span><strong id="progress-percent">0%</strong></div>
+                          <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+                          <p class="privacy-note" id="progress-note" hidden>분석 시간은 도면에 따라 달라서 진행률은 예상값이에요.</p>
+            </div>
             <label class="privacy-note" for="reviewer-consent">
               <input id="reviewer-consent" type="checkbox">
               선택한 PDF를 Microsoft Copilot Studio에 보내는 것에 동의합니다.
@@ -649,15 +773,18 @@
             <div class="review-side">
               <section class="workflow-card" aria-labelledby="feedback-title">
                 <h2 id="feedback-title">고칠 곳 안내</h2>
-                <p class="subtext">어디가 문제인지, 왜 문제인지, 어떻게 고치는지 알려드려요.</p>
+                <p class="subtext">원본 도면과 비교해 확인할 곳을 번호로 알려드려요. 번호를 누르면 도면에서 위치가 강조돼요.</p>
 
-                <div class="feedback" aria-live="polite">
+                <div class="feedback" id="feedback-empty" aria-live="polite">
                   <span class="info-icon" aria-hidden="true">안내</span>
                   <div>
-                    <strong>아직 안내할 내용이 없어요</strong>
-                    <p>지금은 도면을 읽은 결과만 볼 수 있어요. 도면이 맞는지 확인하는 기능이 연결되면 여기에 쉬운 말로 표시돼요.</p>
+                    <strong>확인이 필요한 곳이 없어요</strong>
+                    <p>읽은 요소 모두 파일에서 직접 읽었어요. 도면이 설계 기준에 맞는지는 판단하지 않아요.</p>
                   </div>
                 </div>
+                <ul class="feedback-notes" id="feedback-notes"></ul>
+                <ol class="feedback-list" id="feedback-list"></ol>
+                <p class="subtext" id="feedback-more"></p>
               </section>
             </div>
           </div>

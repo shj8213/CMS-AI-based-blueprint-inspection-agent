@@ -66,14 +66,15 @@ def extract_verified(name, package, output, asset_folders=()):
             relative = Path(*path.parts[1:])
             if ".." in relative.parts or relative.is_absolute():
                 raise RuntimeError("의존성 압축 파일에 잘못된 경로가 있습니다.")
-            if (str(relative) not in package["files"]
-                    and not str(relative).startswith(asset_folders)):
+            relative_text = relative.as_posix()
+            if (relative_text not in package["files"]
+                    and not relative_text.startswith(asset_folders)):
                 continue
             target = destination / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             with archive_file.extractfile(member) as source:
                 target.write_bytes(source.read())
-            extracted.add(str(relative))
+            extracted.add(relative_text)
     missing = package["files"] - extracted
     if missing:
         raise RuntimeError(f"{name}에서 필요한 파일을 찾지 못했습니다: {', '.join(sorted(missing))}")
