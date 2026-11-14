@@ -21,6 +21,7 @@ const analysisHistory = createAnalysisHistory({
 });
 const savedTime = (value) => new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 const fileInput = $("#file-input");
+const feedbackFileInput = $("#feedback-file-input");
 const startButton = $("#start-button");
 const agentStartButton = $("#agent-start-button");
 const reviewerConsent = $("#reviewer-consent");
@@ -44,6 +45,8 @@ let hostedChallengeResolve = null;
 let hostedChallengeReject = null;
 let hostedChallengeTimer = null;
 let hostedChallengeSignal = null;
+let activeAnalysisEntry = null;
+let activeAnalysisFile = null;
 
 const number = (value) => new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 3 }).format(value);
 const point = (value) => `(${number(value.x)}, ${number(value.y)})`;
@@ -195,8 +198,20 @@ function setBusy(value, kind = null) {
   agentStartButton.textContent = value && kind === "agent" ? "② 분석 중…" : "도면 분석하기";
   cancelAgentButton.hidden = !value || kind !== "agent";
   cancelAgentButton.disabled = false;
+  $("#feedback-start-button").disabled = value || !activeAnalysisEntry;
+  feedbackFileInput.disabled = value;
+  $("#cancel-feedback").hidden = !value || kind !== "review";
+  $("#cancel-feedback").disabled = false;
   for (const button of document.querySelectorAll("#history-panel button, #history-panel input, #open-saved-match")) button.disabled = value;
   if (!value) updateReferenceButton();
+}
+
+function updateFeedbackAction() {
+  const available = activeAnalysisEntry?.kind !== "review"
+    && Boolean(activeAnalysisEntry)
+    && Boolean(activeAnalysisFile || activeAnalysisEntry.fingerprint);
+  $("#feedback-actions").hidden = !available;
+  $("#feedback-start-button").disabled = busy || !available;
 }
 
 function hideSavedMatch() {
@@ -219,11 +234,14 @@ async function checkSavedMatch(file) {
   if (token !== fileToken || file !== chosenFile) return;
   chosenFingerprint = fingerprint;
   const entry = analysisHistory.find(fingerprint);
-  if (!entry || (!entry.reviewResponse && entry.kind !== "review")) return;
-  $("#saved-match-text").textContent =
-    `이 도면의 ③ 검토 결과가 ${savedTime(entry.savedAt)}에 저장되어 있어요.`;
+  if (!entry || (!entry.reviewResponse && entry.kind !== "review" && !entry.response)) return;
+  const hasReview = Boolean(entry.reviewResponse || entry.kind === "review");
+  $("#saved-match-text").textContent = hasReview
+    ? `이 도면의 ③ 검토 결과가 ${savedTime(entry.savedAt)}에 저장되어 있어요.`
+    : `이 도면의 ② 분석 결과가 ${savedTime(entry.savedAt)}에 저장되어 있어요.`;
   $("#open-saved-match").dataset.id = entry.id;
-  $("#open-saved-match").textContent = "저장된 검토 결과 보기";
+  $("#open-saved-match").dataset.resultType = hasReview ? "review" : "analysis";
+  $("#open-saved-match").textContent = hasReview ? "저장된 검토 결과 보기" : "저장된 분석 결과 보기";
   $("#saved-match").hidden = false;
 }
 
@@ -290,6 +308,16 @@ function renderHistory() {
     });
     verifyLabel.append(verify, "확인 완료");
     const buttons = [];
+    if (entry.kind !== "review") {
+      const openAnalysis = document.createElement("button");
+      openAnalysis.className = "select-button analysis-result-button";
+      openAnalysis.type = "button";
+      openAnalysis.textContent = "② 분석 결과 보기";
+      openAnalysis.setAttribute("aria-label", `${entry.fileName} 저장된 ② 분석 결과 보기`);
+      openAnalysis.disabled = busy;
+      openAnalysis.addEventListener("click", () => openSaved(entry.id, "analysis"));
+      buttons.push(openAnalysis);
+    }
     if (entry.reviewResponse || entry.kind === "review") {
       const openReview = document.createElement("button");
       openReview.className = "select-button review-result-button";
@@ -326,6 +354,9 @@ function openSaved(id, resultType = "analysis") {
     renderHistory();
     return;
   }
+  activeAnalysisEntry = null;
+  activeAnalysisFile = null;
+  updateFeedbackAction();
   const response = resultType === "review"
     ? entry.kind === "review" ? entry.response : entry.reviewResponse
     : entry.response;
@@ -350,7 +381,12 @@ function openSaved(id, resultType = "analysis") {
     console.error("저장된 결과 열기 실패:", error instanceof Error ? error.name : typeof error);
     return;
   }
+  if (resultType === "analysis" && entry.kind !== "review") {
+    activeAnalysisEntry = entry;
+    activeAnalysisFile = chosenFile && entry.fingerprint && chosenFingerprint === entry.fingerprint ? chosenFile : null;
+  }
   showReview(false, entry.fileName);
+  updateFeedbackAction();
   $("#agent-result-progress").textContent =
     `${savedTime(entry.savedAt)}에 이 브라우저에 저장된 ${resultType === "review" ? "③ 검토" : "② 분석"} 결과예요. 다시 분석하지 않고 전송하지도 않고 바로 열었어요.`;
 }
@@ -725,6 +761,8 @@ agentStartButton.addEventListener("click", async () => {
   agentController = new AbortController();
   setBusy(true, "agent");
   $("#read-error").textContent = "";
+  $("#agent-result-error").textContent = "";
+  $("#feedback-actions").hidden = true;
   startProgress(true);
   try {
     let hostedTokens = null;
@@ -745,50 +783,36 @@ agentStartButton.addEventListener("click", async () => {
       console.error("도면 구분값 계산 실패:", error instanceof Error ? error.name : typeof error);
     }
     const saved = analysisHistory.save({ fileName: file.name, fingerprint, response: analysisResponse });
+    activeAnalysisEntry = saved ?? {
+      id: null,
+      fileName: file.name,
+      fingerprint: fingerprint ?? null,
+      response: analysisResponse,
+      kind: "analysis",
+    };
+    activeAnalysisFile = file;
     if (saved) {
       renderHistory();
       await checkSavedMatch(file);
     }
-    if (hostedMode) {
-      $("#read-progress").textContent = "③ 연결 보안 확인 중이에요…";
-      const challenge = await requestHostedChallenge(agentController.signal);
-      hostedTokens = await getHostedStudioToken("reviewer", challenge, { signal: agentController.signal });
-    }
-    const reviewResponse = await reviewDrawingWithStudio(file, {
-      analysisResult: analysisResponse,
-      hostedAccess: hostedTokens,
-      signal: agentController.signal,
-      onProgress: reportProgress,
-    });
-    stopProgress(true);
     agentResultView.reset();
-    agentResultView.showResponse(reviewResponse, analysisResponse);
-    const reviewSaved = saved && analysisHistory.saveReview(saved.id, reviewResponse);
-    if (reviewSaved) {
-      renderHistory();
-      if (file === chosenFile) await checkSavedMatch(file);
+    try {
+      agentResultView.showResponse(analysisResponse);
+    } catch (error) {
+      $("#agent-result-error").textContent = error instanceof AgentResultError
+        ? "② 응답 형식을 읽을 수 없어 자세한 분석을 표시하지 못했어요. 피드백은 요청할 수 있어요."
+        : "② 분석 결과를 표시하지 못했어요. 피드백은 요청할 수 있어요.";
+      console.error("② 분석 결과 표시 실패:", error instanceof Error ? error.name : typeof error);
     }
+    stopProgress(true);
     showReview(false, file.name);
-    $("#agent-result-progress").textContent =
-      `검토를 마쳤어요.${saved && reviewSaved
-        ? " 결과를 이 브라우저에 저장했어요."
-        : saved
-          ? " 결과를 저장하지 못했어요."
-          : " 결과를 브라우저에 저장하지 못했어요."} 원본 도면과 직접 비교해 주세요.`;
+    updateFeedbackAction();
+    $("#agent-result-progress").textContent = saved
+      ? "② 분석이 끝났어요. 자세한 내용은 접힌 항목에서 확인하고, 원하면 피드백 받기를 눌러 주세요."
+      : "② 분석이 끝났지만 브라우저에 저장하지 못했어요. 피드백 받기를 눌러 이어서 확인할 수 있어요.";
   } catch (error) {
     stopProgress(false);
-    if (analysisResponse != null) {
-      agentResultView.reset();
-      showReview(false, file.name);
-      $("#agent-result-progress").textContent = "② 분석은 끝났지만 ③ 검토는 완료되지 않았어요. ②의 분석 내용은 화면에 표시하지 않아요.";
-      $("#read-error").textContent = error instanceof StudioConnectionError
-        ? `③ 검토를 완료하지 못했어요. ${error.message}`
-        : error instanceof AgentResultError
-          ? "③ 검토 응답을 읽지 못했어요. 다시 시도해 주세요."
-          : hostedMode && error instanceof Error
-            ? `③ 검토 연결 확인을 완료하지 못했어요. ${error.message}`
-          : "③ 검토 결과를 표시하지 못했어요. 다시 시도해 주세요.";
-    } else if (error instanceof StudioConnectionError) {
+    if (error instanceof StudioConnectionError) {
       $("#read-error").textContent = error.message;
     } else if (hostedMode && error instanceof Error) {
       $("#read-error").textContent = error.message;
@@ -805,13 +829,110 @@ agentStartButton.addEventListener("click", async () => {
     setBusy(false);
   }
 });
+
+async function requestFeedback(file = activeAnalysisFile) {
+  if (!activeAnalysisEntry || busy) return;
+  if (!file) {
+    feedbackFileInput.click();
+    return;
+  }
+  if (!file.name.toLowerCase().endsWith(".pdf")) {
+    $("#agent-result-error").textContent = "③ 피드백을 받으려면 ② 분석에 사용한 원본 PDF를 선택해 주세요.";
+    return;
+  }
+  setBusy(true, "checking-review");
+  let fingerprint;
+  try {
+    fingerprint = await fileFingerprint(file);
+  } catch (error) {
+    console.error("도면 구분값 계산 실패:", error instanceof Error ? error.name : typeof error);
+    $("#agent-result-error").textContent = "같은 도면인지 확인하지 못했어요. 원본 PDF를 다시 선택해 주세요.";
+    setBusy(false);
+    return;
+  }
+  const isCurrentFile = file === activeAnalysisFile;
+  if (!isCurrentFile && (!fingerprint || !activeAnalysisEntry.fingerprint
+    || fingerprint !== activeAnalysisEntry.fingerprint)) {
+    $("#agent-result-error").textContent = "저장된 ② 분석과 같은 원본 PDF인지 확인할 수 없어요. 원본 도면으로 새로 분석해 주세요.";
+    setBusy(false);
+    return;
+  }
+
+  activeAnalysisFile = file;
+  agentController = new AbortController();
+  setBusy(true, "review");
+  $("#agent-result-error").textContent = "";
+  $("#agent-result-progress").textContent = "③에 피드백을 요청하는 중이에요…";
+  try {
+    let hostedTokens = null;
+    if (hostedMode) {
+      $("#agent-result-progress").textContent = "③ 연결 보안 확인 중이에요…";
+      const challenge = await requestHostedChallenge(agentController.signal);
+      hostedTokens = await getHostedStudioToken("reviewer", challenge, { signal: agentController.signal });
+    }
+    const reviewResponse = await reviewDrawingWithStudio(file, {
+      analysisResult: activeAnalysisEntry.response,
+      hostedAccess: hostedTokens,
+      signal: agentController.signal,
+      onProgress: (message) => {
+        reportProgress(message);
+        $("#agent-result-progress").textContent = message;
+      },
+    });
+    agentResultView.showResponse(reviewResponse, activeAnalysisEntry.response);
+    const reviewSaved = activeAnalysisEntry.id
+      && analysisHistory.saveReview(activeAnalysisEntry.id, reviewResponse);
+    if (reviewSaved) {
+      activeAnalysisEntry = analysisHistory.get(activeAnalysisEntry.id);
+      renderHistory();
+      if (file === chosenFile) await checkSavedMatch(file);
+    }
+    $("#feedback-actions").hidden = true;
+    $("#agent-result-error").textContent = "";
+    $("#agent-result-progress").textContent = reviewSaved
+      ? "③ 피드백을 받았고 결과를 이 브라우저에 저장했어요. 원본 도면과 직접 비교해 주세요."
+      : "③ 피드백을 받았어요. 브라우저에 저장하지 못했으니 이 화면을 닫기 전에 확인해 주세요.";
+    $("#result-title").focus();
+  } catch (error) {
+    $("#agent-result-progress").textContent = "③ 피드백을 받지 못했어요. ② 분석 결과는 그대로 보관되어 있어요.";
+    $("#agent-result-error").textContent = error instanceof StudioConnectionError
+      ? error.message
+      : error instanceof AgentResultError
+        ? "③ 응답 형식을 읽을 수 없어요. 다시 시도해 주세요."
+        : hostedMode && error instanceof Error
+          ? error.message
+          : "③ 피드백을 표시하지 못했어요. 연결 상태를 확인한 뒤 다시 시도해 주세요.";
+    if (!(error instanceof StudioConnectionError) && !(error instanceof AgentResultError)) {
+      console.error("③ 피드백 처리 실패:", error instanceof Error ? error.name : typeof error);
+    }
+    updateFeedbackAction();
+  } finally {
+    agentController = null;
+    setBusy(false);
+  }
+}
+
+$("#feedback-start-button").addEventListener("click", () => requestFeedback());
+feedbackFileInput.addEventListener("change", async () => {
+  const file = feedbackFileInput.files?.[0] ?? null;
+  feedbackFileInput.value = "";
+  if (file) await requestFeedback(file);
+});
+$("#cancel-feedback").addEventListener("click", () => {
+  if (!agentController) return;
+  $("#cancel-feedback").disabled = true;
+  $("#agent-result-progress").textContent = "③ 기다리기를 중단하는 중이에요…";
+  agentController.abort();
+});
 cancelAgentButton.addEventListener("click", () => {
   if (!agentController) return;
   cancelAgentButton.disabled = true;
   $("#read-progress").textContent = "기다리기를 중단하는 중이에요…";
   agentController.abort();
 });
-$("#open-saved-match").addEventListener("click", (event) => openSaved(event.currentTarget.dataset.id, "review"));
+$("#open-saved-match").addEventListener("click", (event) => (
+  openSaved(event.currentTarget.dataset.id, event.currentTarget.dataset.resultType)
+));
 $("#download-references").addEventListener("click", downloadReferences);
 $("#clear-history").addEventListener("click", () => {
   if (busy || !window.confirm("저장된 분석·검토 결과를 모두 삭제할까요? 되돌릴 수 없어요.")) return;
@@ -850,6 +971,9 @@ $("#start-intro-bottom").addEventListener("click", showUpload);
 $("#back-button").addEventListener("click", () => {
   $("#review-screen").hidden = true;
   $("#upload-screen").hidden = false;
+  activeAnalysisEntry = null;
+  activeAnalysisFile = null;
+  updateFeedbackAction();
   result = null;
   agentResultView.reset();
   list.replaceChildren();

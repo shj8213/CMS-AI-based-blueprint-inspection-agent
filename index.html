@@ -560,7 +560,7 @@
             </div>
             <label class="privacy-note" for="reviewer-consent">
               <input id="reviewer-consent" type="checkbox">
-              선택한 PDF를 Microsoft Copilot Studio에 보내는 것에 동의합니다.
+              선택한 PDF를 Microsoft Copilot Studio의 ②에 보내고, 요청하면 ③에도 보내는 것에 동의합니다.
             </label>
             <div class="privacy-note" id="hosted-connection-note" hidden>
               공개 홈페이지의 자동 연결은 남용 방지를 위해 Cloudflare 확인 절차를 사용해요. 접속 정보가 Cloudflare로 전달되고, 필요하면 확인 창이 나타날 수 있어요.
@@ -646,8 +646,16 @@
             <h2 id="agent-result-title">② 도면 분석 결과</h2>
             <p class="read-message" id="agent-result-progress" role="status"></p>
             <p class="read-message error" id="agent-result-error" role="alert"></p>
+            <div id="feedback-actions" hidden>
+              <p class="privacy-note">피드백을 요청하면 원본 PDF와 ② 분석 결과가 Microsoft Copilot Studio의 ③으로 전송돼요.</p>
+              <button class="start-button" id="feedback-start-button" type="button">피드백 받기</button>
+              <input class="hidden-input" id="feedback-file-input" type="file" accept=".pdf,application/pdf" aria-label="저장된 분석과 함께 보낼 원본 PDF 선택">
+              <button class="select-button" id="cancel-feedback" type="button" hidden>기다리기 중단</button>
+            </div>
 
-            <div id="agent-result-output" hidden>
+            <details class="agent-details" id="analysis-result-details" hidden>
+              <summary>② 분석 결과 자세히 보기</summary>
+              <div id="agent-result-output" hidden>
               <h3>전체 요약</h3>
               <div class="agent-summary" id="agent-summary"></div>
               <h3>먼저 확인할 내용 <span id="agent-confirmation-count"></span></h3>
@@ -697,6 +705,7 @@
                 </div>
               </details>
             </div>
+            </details>
             <div id="review-agent-result-output" hidden>
               <h3>도면 간단 설명</h3>
               <p class="agent-summary" id="shaft-analysis-summary"></p>
