@@ -5,7 +5,7 @@ import {
   displayValue,
   parseAgentResult,
 } from "./agent-result.js";
-import { buildFeedbackMarkers, pageMatches } from "./feedback-markers.js";
+import { buildFeedbackMarkers, pageMatches, referencedPages } from "./feedback-markers.js";
 
 const PAGE_SIZE = 50;
 const $ = (selector) => document.querySelector(selector);
@@ -181,43 +181,85 @@ function highlightFinding(findingId, { scrollTo }) {
 }
 
 function setLocationNote(markerInfo, text, missing) {
-  const note = document.querySelector(`.review-finding[data-finding-number="${markerInfo.number}"] .finding-location-note`);
+  const card = document.querySelector(`.review-finding[data-finding-number="${markerInfo.number}"]`);
+  const note = card?.querySelector(".finding-location-note");
   if (!note) return;
   note.textContent = text;
   note.classList.toggle("missing", missing);
+  card.classList.toggle("located", !missing);
+  const locate = card.querySelector(".finding-locate");
+  if (locate) locate.hidden = missing;
 }
 
-async function renderFeedbackDrawing(markers, file, isCurrent) {
+const MAX_TEXT_SEARCH_PAGES = 20;
+
+function finishNotes(markers, drawn, sizeMismatch) {
+  for (const marker of markers) {
+    if (drawn.has(marker.number)) {
+      const shown = marker.placements.filter((item) => item.drawn);
+      const pagesText = [...new Set(shown.map((item) => item.page))].join(", ");
+      const how = shown.some((item) => item.source === "text") ? "PDF 글자 위치로 찾은" : "②가 기록한 좌표로 그린";
+      const extra = shown.length > 1 ? ` (같은 글자가 ${shown.length}곳이라 점선 후보로 모두 표시)` : "";
+      setLocationNote(marker, `도면 표시: ${pagesText}페이지의 ${marker.number}${marker.symbol} 동그라미 · ${how} 위치${extra}`, false);
+    } else if (marker.placements.length && sizeMismatch) {
+      setLocationNote(marker, "위치 확인 필요 · 원본 PDF의 페이지 크기가 ② 결과와 달라 표시하지 않았어요.", true);
+    } else {
+      setLocationNote(marker, `위치 확인 필요 · ${marker.reason || "도면 위 위치를 찾지 못했어요."}`, true);
+    }
+  }
+}
+
+async function renderFeedbackDrawing(review, analysis, coordinateMarkers, file, isCurrent) {
   const section = $("#review-drawing");
   const area = $("#review-drawing-pages");
   const status = $("#review-drawing-status");
   area.replaceChildren();
   section.hidden = false;
-  const placed = markers.filter((marker) => marker.placements.length);
-  if (!placed.length) {
-    status.textContent = "위치 정보가 있는 피드백이 없어 도면 위에 표시하지 않았어요. 카드의 위치 설명을 보고 원본 도면에서 찾아 주세요.";
-    return;
-  }
   if (!file) {
+    finishNotes(coordinateMarkers.map((marker) => marker.placements.length
+      ? { ...marker, reason: "원본 PDF가 없어 도면 위에 표시하지 못했어요." }
+      : marker), new Set(), false);
     status.textContent = "원본 PDF가 없어 도면 그림을 보여 줄 수 없어요. 저장된 결과라면 같은 PDF를 첫 화면에서 고른 뒤 다시 열어 주세요.";
     return;
   }
-  status.textContent = "도면 그림을 준비하는 중이에요…";
-  const pageNumbers = [...new Set(placed.flatMap((marker) => marker.placements.map((item) => item.page)))]
-    .sort((a, b) => a - b);
-  let pages;
+  status.textContent = "원본 PDF에서 피드백 위치를 찾는 중이에요…";
+  let markers = coordinateMarkers;
+  let pages = [];
+  let pdf;
   try {
-    const { renderPdfPages } = await import("./pdf.js");
-    pages = await renderPdfPages(await file.arrayBuffer(), pageNumbers);
+    const { openPdfForFeedback } = await import("./pdf.js");
+    pdf = await openPdfForFeedback(await file.arrayBuffer());
+    if (!isCurrent()) return;
+    const wanted = referencedPages(review, analysis)
+      ?? Array.from({ length: Math.min(pdf.pageCount, MAX_TEXT_SEARCH_PAGES) }, (_, index) => index + 1);
+    const pdfPages = new Map();
+    for (const number of wanted) {
+      const pageText = await pdf.pageTexts(number);
+      if (pageText) pdfPages.set(number, pageText);
+    }
+    if (!isCurrent()) return;
+    markers = buildFeedbackMarkers(review, analysis, pdfPages);
+    const pageNumbers = [...new Set(markers.flatMap((marker) => marker.placements.map((item) => item.page)))]
+      .sort((a, b) => a - b);
+    if (pageNumbers.length) status.textContent = "도면 그림을 준비하는 중이에요…";
+    for (const number of pageNumbers) {
+      const page = await pdf.render(number);
+      if (!isCurrent()) return;
+      if (page) pages.push(page);
+    }
   } catch (error) {
     if (!isCurrent()) return;
     console.error("도면 그림 표시 실패:", error instanceof Error ? error.name : typeof error);
+    finishNotes(markers.map((marker) => ({ ...marker, placements: [], reason: "원본 PDF를 읽지 못해 위치를 찾지 못했어요." })), new Set(), false);
     status.textContent = "도면 그림을 그리지 못했어요. 카드의 위치 설명을 보고 원본 도면에서 찾아 주세요.";
     return;
+  } finally {
+    pdf?.close();
   }
   if (!isCurrent()) return;
 
   const drawn = new Set();
+  let sizeMismatch = false;
   for (const page of pages) {
     const figure = document.createElement("figure");
     figure.className = "review-drawing-page";
@@ -228,24 +270,31 @@ async function renderFeedbackDrawing(markers, file, isCurrent) {
     page.canvas.setAttribute("role", "img");
     page.canvas.setAttribute("aria-label", `${page.pageNumber}페이지 도면 그림`);
     frame.append(page.canvas);
-    for (const marker of placed) {
+    for (const marker of markers) {
       for (const placement of marker.placements) {
-        if (placement.page !== page.pageNumber || !pageMatches(placement, page)) continue;
+        if (placement.page !== page.pageNumber) continue;
+        if (!pageMatches(placement, page)) {
+          sizeMismatch = true;
+          continue;
+        }
         const button = document.createElement("button");
         button.type = "button";
-        button.className = `feedback-marker ${marker.color}`;
+        button.className = `feedback-marker ${marker.color}${placement.candidate ? " candidate" : ""}`;
         button.dataset.findingNumber = String(marker.number);
+        button.dataset.source = placement.source;
         button.style.left = `${placement.x * 100}%`;
         button.style.top = `${placement.y * 100}%`;
         button.style.width = `${placement.radius * 200}%`;
         button.setAttribute("aria-pressed", "false");
-        button.setAttribute("aria-label", `${marker.number}번 ${marker.label} 피드백 (${marker.findingId}) 카드 보기`);
+        button.setAttribute("aria-label",
+          `${marker.number}번 ${marker.label} 피드백 (${marker.findingId})${placement.candidate ? " 후보 위치" : ""} 카드 보기`);
         const label = document.createElement("span");
         label.className = "feedback-marker-label";
         label.textContent = `${marker.number}${marker.symbol}`;
         button.append(label);
         button.addEventListener("click", () => highlightFinding(String(marker.number), { scrollTo: "card" }));
         frame.append(button);
+        placement.drawn = true;
         drawn.add(marker.number);
       }
     }
@@ -253,19 +302,14 @@ async function renderFeedbackDrawing(markers, file, isCurrent) {
     area.append(figure);
   }
 
-  for (const marker of markers) {
-    if (drawn.has(marker.number)) {
-      const pagesText = [...new Set(marker.placements.map((item) => item.page))].join(", ");
-      setLocationNote(marker, `도면 표시: ${pagesText}페이지의 ${marker.number}${marker.symbol} 동그라미`, false);
-    } else if (marker.placements.length) {
-      setLocationNote(marker, "위치 확인 필요 · 원본 PDF의 페이지 크기가 ② 결과와 달라 표시하지 않았어요.", true);
-      const button = document.querySelector(`.review-finding[data-finding-number="${marker.number}"] .finding-locate`);
-      button?.remove();
-    }
+  finishNotes(markers, drawn, sizeMismatch);
+  if (drawn.size) {
+    status.textContent = `피드백 ${markers.length}개 중 ${drawn.size}개를 도면 위에 표시했어요. 빨강(!)은 틀림, 주황(?)은 확인 필요, 점선은 같은 글자가 여러 곳이라 후보로 표시한 위치예요. 참고 표시이니 원본 도면과 직접 비교해 주세요.`;
+  } else if (sizeMismatch) {
+    status.textContent = "② 결과의 페이지 크기가 원본 PDF와 달라 동그라미를 그리지 않았어요.";
+  } else {
+    status.textContent = "도면에서 피드백 위치를 찾지 못해 동그라미를 그리지 않았어요. 카드의 위치 설명을 보고 원본 도면에서 찾아 주세요.";
   }
-  status.textContent = drawn.size
-    ? "동그라미는 ②가 기록한 좌표로 그린 참고 표시예요. 빨강(!)은 틀림, 노랑(?)은 확인 필요예요. 원본 도면과 직접 비교해 주세요."
-    : "② 결과의 페이지 크기가 원본 PDF와 달라 동그라미를 그리지 않았어요.";
 }
 
 function renderReviewResult(data, responseSummary, message, analysisText) {
@@ -333,26 +377,22 @@ function renderReviewResult(data, responseSummary, message, analysisText) {
       card.append(heading);
       const note = document.createElement("p");
       note.className = "finding-location-note";
-      if (marker.placements.length) {
-        note.textContent = "도면 그림 위 위치를 준비하는 중이에요.";
-        const locate = document.createElement("button");
-        locate.type = "button";
-        locate.className = "select-button finding-locate";
-        locate.textContent = "도면에서 위치 보기";
-        locate.addEventListener("click", (event) => {
-          event.stopPropagation();
-          highlightFinding(String(marker.number), { scrollTo: "marker" });
-        });
-        card.append(note, locate);
-        card.addEventListener("click", (event) => {
-          if (event.target.closest("button") || window.getSelection?.().toString()) return;
-          highlightFinding(String(marker.number), { scrollTo: "marker" });
-        });
-      } else {
-        note.textContent = `위치 확인 필요 · ${marker.reason}`;
-        note.classList.add("missing");
-        card.append(note);
-      }
+      note.textContent = "도면 위 위치를 찾는 중이에요.";
+      const locate = document.createElement("button");
+      locate.type = "button";
+      locate.className = "select-button finding-locate";
+      locate.textContent = "도면에서 위치 보기";
+      locate.hidden = true;
+      locate.addEventListener("click", (event) => {
+        event.stopPropagation();
+        highlightFinding(String(marker.number), { scrollTo: "marker" });
+      });
+      card.append(note, locate);
+      card.addEventListener("click", (event) => {
+        if (!card.classList.contains("located")) return;
+        if (event.target.closest("button") || window.getSelection?.().toString()) return;
+        highlightFinding(String(marker.number), { scrollTo: "marker" });
+      });
       addReviewField(card, "② 항목 ID", finding.analysis_item_ids.join(", "), "없음");
       addReviewField(card, "위치", finding.location);
       addReviewField(card, "무엇이 문제인지", finding.what);
@@ -403,6 +443,7 @@ function renderReviewResult(data, responseSummary, message, analysisText) {
   );
   return {
     markers,
+    analysisData,
     message: message.includes("직접")
       ? "직접 입력한 ③ 검토 결과를 표시했어요."
       : "③ 검토 응답을 표시했어요.",
@@ -535,7 +576,7 @@ export function createAgentResultView() {
       progress.textContent = result.message;
       if (result.markers.length) {
         const token = drawingGeneration;
-        renderFeedbackDrawing(result.markers, file, () => token === drawingGeneration);
+        renderFeedbackDrawing(parsed.data, result.analysisData, result.markers, file, () => token === drawingGeneration);
       }
       return;
     }

@@ -383,12 +383,12 @@
       .review-finding { margin: 10px 0; padding: 12px; border: 1px solid #e1e7f0; border-radius: 9px; }
       .review-finding h4 { margin: 0 0 8px; font-size: 14px; }
       .review-finding p { margin: 6px 0; overflow-wrap: anywhere; white-space: pre-wrap; }
-      .review-finding.red { border-left: 5px solid #c62828; }
-      .review-finding.yellow { border-left: 5px solid #e0a800; }
+      .review-finding.tone-red { border-left: 5px solid #c62828; }
+      .review-finding.tone-orange { border-left: 5px solid #e8710a; }
       .review-finding.linked { outline: 3px solid #1f5fbf; outline-offset: 2px; background: #f2f7ff; }
       .finding-badge { display: inline-block; min-width: 28px; padding: 1px 6px; border-radius: 999px; text-align: center; font-weight: 800; }
-      .finding-badge.red { background: #c62828; color: #fff; }
-      .finding-badge.yellow { background: #ffd54f; color: #3d2f00; }
+      .finding-badge.tone-red { background: #c62828; color: #fff; }
+      .finding-badge.tone-orange { background: #b34d00; color: #fff; }
       .finding-location-note { color: #1f5fbf; font-weight: 700; }
       .finding-location-note.missing { color: #8a5a00; }
       .review-drawing-page { margin: 12px 0; }
@@ -396,13 +396,14 @@
       .review-drawing-frame { position: relative; border: 1px solid #c3cee0; border-radius: 6px; overflow: hidden; }
       .review-drawing-frame canvas { display: block; width: 100%; height: auto; }
       .feedback-marker { position: absolute; aspect-ratio: 1; min-width: 22px; padding: 0; transform: translate(-50%, -50%); border: 3px solid; border-radius: 50%; background: transparent; cursor: pointer; }
-      .feedback-marker.red { border-color: #c62828; }
-      .feedback-marker.yellow { border-color: #e0a800; }
+      .feedback-marker.tone-red { border-color: #c62828; }
+      .feedback-marker.tone-orange { border-color: #e8710a; }
+      .feedback-marker.candidate { border-style: dashed; }
       .feedback-marker.linked { border-width: 5px; box-shadow: 0 0 0 4px rgba(31, 95, 191, .45); }
       .feedback-marker:focus-visible { outline: 3px solid #1f5fbf; outline-offset: 3px; }
       .feedback-marker-label { position: absolute; left: 100%; top: -6px; margin-left: 2px; padding: 0 5px; border-radius: 999px; font: 800 12px/18px sans-serif; white-space: nowrap; }
-      .feedback-marker.red .feedback-marker-label { background: #c62828; color: #fff; }
-      .feedback-marker.yellow .feedback-marker-label { background: #ffd54f; color: #3d2f00; }
+      .feedback-marker.tone-red .feedback-marker-label { background: #c62828; color: #fff; }
+      .feedback-marker.tone-orange .feedback-marker-label { background: #b34d00; color: #fff; }
 
       @media (max-width: 740px) {
         .page { width: min(100% - 28px, 540px); }
@@ -665,6 +666,11 @@
           <section class="card agent-results" id="agent-result-panel" aria-labelledby="agent-result-title">
             <h2 id="agent-result-title">② 도면 분석 결과</h2>
             <p class="read-message" id="agent-result-progress" role="status"></p>
+            <div class="progress-box" id="feedback-progress-box" hidden>
+              <div class="progress-head"><span id="feedback-progress-label"></span><strong id="feedback-progress-percent">0%</strong></div>
+              <div class="progress-track" role="progressbar" aria-label="③ 피드백 진행률" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="feedback-progress-track"><div class="progress-fill" id="feedback-progress-fill"></div></div>
+              <p class="privacy-note" id="feedback-progress-note" hidden>검토 시간은 도면에 따라 달라서 진행률은 예상값이에요.</p>
+            </div>
             <p class="read-message error" id="agent-result-error" role="alert"></p>
             <div id="feedback-actions" hidden>
               <p class="privacy-note">피드백을 요청하면 원본 PDF와 ② 분석 결과가 Microsoft Copilot Studio의 ③으로 전송돼요.</p>

@@ -251,25 +251,60 @@ function openDocument(getDocument, buffer) {
   });
 }
 
-// 원본 PDF는 바꾸지 않고, 요청한 페이지만 화면 표시용 그림(canvas)으로 그립니다.
-export async function renderPdfPages(buffer, pageNumbers, maxWidth = 1000) {
+// 원본 PDF는 바꾸지 않고, 피드백 표시에 필요한 페이지 글자 위치와 화면용 그림만 만듭니다.
+export async function openPdfForFeedback(buffer) {
   const { getDocument } = await loadLibrary();
   const task = openDocument(getDocument, buffer);
+  let document;
   try {
-    const document = await task.promise;
-    const rendered = [];
-    for (const number of pageNumbers) {
-      if (!Number.isInteger(number) || number < 1 || number > document.numPages) continue;
+    document = await task.promise;
+  } catch (error) {
+    await task.destroy();
+    throw error;
+  }
+  const valid = (number) => Number.isInteger(number) && number >= 1 && number <= document.numPages;
+  return {
+    pageCount: document.numPages,
+    async pageTexts(number) {
+      if (!valid(number)) return null;
       const page = await document.getPage(number);
       const viewport = page.getViewport({ scale: 1 });
-      const scale = Math.min(2, maxWidth / viewport.width);
-      const { canvas } = await renderPageToCanvas(page, viewport, scale);
-      rendered.push({ pageNumber: number, canvas, width: viewport.width, height: viewport.height });
-    }
-    return rendered;
-  } finally {
-    await task.destroy();
-  }
+      const content = await page.getTextContent();
+      const texts = [];
+      for (const item of content.items) {
+        if (!("str" in item) || !item.str.trim()) continue;
+        const matrix = multiply(viewport.transform, item.transform);
+        const height = Math.hypot(matrix[2], matrix[3]);
+        const scaleX = Math.hypot(matrix[0], matrix[1]) || 1;
+        const along = [matrix[0] / scaleX, matrix[1] / scaleX];
+        const up = height ? [matrix[2] / height, matrix[3] / height] : [0, -1];
+        const width = item.width * Math.hypot(viewport.transform[0], viewport.transform[1]);
+        const origin = [matrix[4], matrix[5]];
+        const corners = [[0, 0], [width, 0], [0, height], [width, height]].map(([a, b]) => [
+          origin[0] + along[0] * a + up[0] * b,
+          origin[1] + along[1] * a + up[1] * b,
+        ]);
+        const xs = corners.map(([x]) => x);
+        const ys = corners.map(([, y]) => y);
+        texts.push({
+          text: item.str,
+          box: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)],
+          baseline: matrix[5],
+          height,
+          horizontal: Math.abs(along[1]) < 0.05 && along[0] > 0,
+        });
+      }
+      return { pageNumber: number, width: viewport.width, height: viewport.height, texts };
+    },
+    async render(number, maxWidth = 1000) {
+      if (!valid(number)) return null;
+      const page = await document.getPage(number);
+      const viewport = page.getViewport({ scale: 1 });
+      const { canvas } = await renderPageToCanvas(page, viewport, Math.min(2, maxWidth / viewport.width));
+      return { pageNumber: number, canvas, width: viewport.width, height: viewport.height };
+    },
+    close: () => task.destroy(),
+  };
 }
 
 export async function readPdf(buffer, onProgress = () => {}) {

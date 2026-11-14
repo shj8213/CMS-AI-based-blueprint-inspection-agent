@@ -53,18 +53,22 @@ const point = (value) => `(${number(value.x)}, ${number(value.y)})`;
 
 let progressValue = 0;
 let progressTimer = null;
+// "" 는 첫 화면의 진행 표시, "feedback-" 는 ③ 피드백 진행 표시입니다.
+let progressPrefix = "";
+const progressPart = (name) => $(`#${progressPrefix}progress-${name}`);
 function setProgressPercent(percent) {
   progressValue = Math.max(progressValue, Math.min(100, Math.round(percent)));
-  $("#progress-percent").textContent = `${progressValue}%`;
-  $("#progress-fill").style.width = `${progressValue}%`;
-  $("#progress-track").setAttribute("aria-valuenow", String(progressValue));
+  progressPart("percent").textContent = `${progressValue}%`;
+  progressPart("fill").style.width = `${progressValue}%`;
+  progressPart("track").setAttribute("aria-valuenow", String(progressValue));
 }
-function startProgress(estimated) {
+function startProgress(estimated, prefix = "") {
   clearInterval(progressTimer);
+  progressPrefix = prefix;
   progressValue = 0;
   setProgressPercent(0);
-  $("#progress-box").hidden = false;
-  $("#progress-note").hidden = !estimated;
+  progressPart("box").hidden = false;
+  progressPart("note").hidden = !estimated;
   if (estimated) {
     // 서버 소요 시간을 알 수 없어 90%까지 천천히 다가가게 한다.
     progressTimer = setInterval(() => setProgressPercent(progressValue + (90 - progressValue) * 0.04), 1000);
@@ -73,17 +77,18 @@ function startProgress(estimated) {
 function stopProgress(done) {
   clearInterval(progressTimer);
   if (done) setProgressPercent(100);
-  setTimeout(() => { if (!busy) $("#progress-box").hidden = true; }, done ? 600 : 0);
+  const box = progressPart("box");
+  setTimeout(() => { if (!busy) box.hidden = true; }, done ? 600 : 0);
 }
 function reportProgress(message) {
-  $("#progress-label").textContent = message;
-  $("#read-progress").textContent = "";
+  progressPart("label").textContent = message;
+  if (!progressPrefix) $("#read-progress").textContent = "";
   const pages = /(\d+)\/(\d+)페이지/.exec(message);
   if (pages) return setProgressPercent(((Number(pages[1]) - 0.5) / Number(pages[2])) * 95);
   if (message.includes("보내는")) setProgressPercent(20);
-  else if (message.includes("분석하고")) setProgressPercent(30);
+  else if (message.includes("분석하고") || message.includes("검토하고")) setProgressPercent(30);
   else if (message.includes("연결하는")) setProgressPercent(12);
-  else if (message.includes("확인하는")) setProgressPercent(5);
+  else if (message.includes("확인하는") || message.includes("확인 중")) setProgressPercent(5);
 }
 
 function updateAgentStartButton() {
@@ -865,10 +870,13 @@ async function requestFeedback(file = activeAnalysisFile) {
   setBusy(true, "review");
   $("#agent-result-error").textContent = "";
   $("#agent-result-progress").textContent = "③에 피드백을 요청하는 중이에요…";
+  startProgress(true, "feedback-");
+  reportProgress("③에 피드백을 요청하는 중이에요…");
   try {
     let hostedTokens = null;
     if (hostedMode) {
       $("#agent-result-progress").textContent = "③ 연결 보안 확인 중이에요…";
+      reportProgress("③ 연결 보안 확인 중이에요…");
       const challenge = await requestHostedChallenge(agentController.signal);
       hostedTokens = await getHostedStudioToken("reviewer", challenge, { signal: agentController.signal });
     }
@@ -881,6 +889,7 @@ async function requestFeedback(file = activeAnalysisFile) {
         $("#agent-result-progress").textContent = message;
       },
     });
+    stopProgress(true);
     agentResultView.showResponse(reviewResponse, activeAnalysisEntry.response, file);
     const reviewSaved = activeAnalysisEntry.id
       && analysisHistory.saveReview(activeAnalysisEntry.id, reviewResponse);
@@ -896,6 +905,7 @@ async function requestFeedback(file = activeAnalysisFile) {
       : "③ 피드백을 받았어요. 브라우저에 저장하지 못했으니 이 화면을 닫기 전에 확인해 주세요.";
     $("#result-title").focus();
   } catch (error) {
+    stopProgress(false);
     $("#agent-result-progress").textContent = "③ 피드백을 받지 못했어요. ② 분석 결과는 그대로 보관되어 있어요.";
     $("#agent-result-error").textContent = error instanceof StudioConnectionError
       ? error.message

@@ -17,7 +17,7 @@ import { getNetlifyConfig } from "../netlify/edge-functions/studio-config.js";
 import { config as netlifyStudioTokenConfig, handleNetlifyStudioToken } from "../netlify/edge-functions/studio-token.js";
 import { createAnalysisHistory, fileFingerprint } from "../src/analysis-history.js";
 import { buildReferenceExamples } from "../src/reference-examples.js";
-import { buildFeedbackMarkers, pageMatches } from "../src/feedback-markers.js";
+import { buildFeedbackMarkers, findTextMatches, pageMatches } from "../src/feedback-markers.js";
 
 const TEST_HISTORY_KEY = "blueprint-analysis-history-test";
 localStorage.removeItem(TEST_HISTORY_KEY);
@@ -1167,14 +1167,14 @@ function markerFixtures() {
   return { analysis, review };
 }
 
-agentTest("도면 위 표시: 좌표가 확실한 피드백만 페이지별 빨강·노랑 동그라미로 계산", async () => {
+agentTest("도면 위 표시: 좌표가 확실한 피드백만 페이지별 빨강·주황 동그라미로 계산", async () => {
   const { analysis, review } = markerFixtures();
   const before = JSON.stringify(analysis);
   const markers = buildFeedbackMarkers(review, analysis);
   assert(JSON.stringify(analysis) === before, "② 결과를 바꾸면 안 돼요.");
   assert(markers.map((marker) => marker.number).join() === "1,2,3,4,5,6,7");
-  assert(markers[0].color === "red" && markers[0].symbol === "!", "틀림은 빨강·! 이어야 해요.");
-  assert(markers[1].color === "yellow" && markers[1].symbol === "?", "확인 필요는 노랑·? 이어야 해요.");
+  assert(markers[0].color === "tone-red" && markers[0].symbol === "!", "틀림은 빨강·! 이어야 해요.");
+  assert(markers[1].color === "tone-orange" && markers[1].symbol === "?", "확인 필요는 주황·? 이어야 해요.");
   const first = markers[0].placements[0];
   assert(first.page === 1 && Math.abs(first.x - 80 / 300) < 1e-9 && Math.abs(first.y - 30 / 240) < 1e-9, JSON.stringify(first));
   assert(first.radius > 0.2 && first.radius < 0.3, `범위를 감싸는 반지름이어야 해요: ${first.radius}`);
@@ -1185,6 +1185,47 @@ agentTest("도면 위 표시: 좌표가 확실한 피드백만 페이지별 빨�
   }
   assert(buildFeedbackMarkers(review, null).every((marker) => !marker.placements.length && marker.reason));
   assert(pageMatches(first, { width: 300, height: 240 }) && !pageMatches(first, { width: 240, height: 300 }));
+});
+
+agentTest("도면 위 표시: ② 좌표가 없으면 PDF 글자 위치로 동그라미를 찾음", async () => {
+  const text = (value, x0, y0, x1, y1, horizontal = true) =>
+    ({ text: value, box: [x0, y0, x1, y1], baseline: y1, height: y1 - y0, horizontal });
+  const page = { pageNumber: 1, width: 300, height: 240, texts: [
+    text("Ø", 100, 90, 108, 100), text("20 h7", 108, 90, 130, 100),
+    text("Ra 1.6", 200, 40, 230, 50), text("Ra 1.6", 200, 140, 230, 150),
+    text("15", 10, 200, 20, 210), text("15", 40, 200, 50, 210), text("15", 70, 200, 80, 210), text("15", 99, 200, 109, 210),
+    text("A", 250, 100, 260, 130, false),
+  ] };
+  const pdfPages = new Map([[1, page]]);
+  const joined = findTextMatches("⌀20h7", page);
+  assert(joined.length === 1 && joined[0].join() === "100,90,130,100", JSON.stringify(joined));
+  assert(findTextMatches("20", { ...page, texts: [text("2026.11", 0, 0, 30, 10), text("20", 100, 0, 110, 10)] })
+    .map((box) => box[0]).join() === "100", "글자 조각 전체가 같은 곳을 먼저 골라야 해요.");
+  assert(!findTextMatches("0h", { ...page, texts: [text("20", 0, 0, 10, 10), text("h7", 200, 0, 210, 10)] }).length,
+    "멀리 떨어진 글자 조각을 이어 붙이면 안 돼요.");
+  const analysis = { pages: [{ page_number: 1, width: 300, height: 240, coordinate_unit: "pt", coordinate_origin: "왼쪽 위" }], elements: [
+    { id: "E01", page_number: 1, raw_text: "Ø20h7", location: { x: null, y: null, bbox: null } },
+    { id: "E02", page_number: 1, raw_text: "Ra 1.6", location: {} },
+    { id: "E03", page_number: 1, raw_text: "15", location: {} },
+    { id: "E04", page_number: 1, raw_text: "M?0", location: {} },
+    { id: "E05", page_number: 1, raw_text: "없는 글자", location: {} },
+    { id: "E06", page_number: 1, raw_text: "Ø20h7", location: { coordinate_unit: "pt", x: 30, y: 30 } },
+  ] };
+  const review = { findings: ["E01", "E02", "E03", "E04", "E05", "E06"].map((id, index) =>
+    ({ id: `R0${index + 1}`, classification: "틀림", analysis_item_ids: [id] })) };
+  const before = JSON.stringify(analysis);
+  const markers = buildFeedbackMarkers(review, analysis, pdfPages);
+  assert(JSON.stringify(analysis) === before, "② 결과를 바꾸면 안 돼요.");
+  const [one] = markers[0].placements;
+  assert(markers[0].placements.length === 1 && one.source === "text" && !one.candidate, JSON.stringify(markers[0]));
+  assert(Math.abs(one.x - 115 / 300) < 1e-9 && Math.abs(one.y - 95 / 240) < 1e-9, JSON.stringify(one));
+  assert(markers[1].placements.length === 2 && markers[1].placements.every((item) => item.candidate), "같은 글자 2곳은 점선 후보예요.");
+  assert(!markers[2].placements.length && markers[2].reason.includes("4곳"), markers[2].reason);
+  assert(!markers[3].placements.length && markers[3].reason.includes("읽지 못한 글자"), markers[3].reason);
+  assert(!markers[4].placements.length && markers[4].reason.includes("찾지 못했어요"), markers[4].reason);
+  assert(markers[5].placements[0].source === "coordinate", "② 좌표가 있으면 좌표를 먼저 써야 해요.");
+  assert(buildFeedbackMarkers(review, analysis).slice(0, 5).every((marker) => !marker.placements.length),
+    "원본 PDF 글자가 없으면 글자로 찾지 않아요.");
 });
 
 agentTest("화면: ③ 피드백 동그라미를 해당 페이지 도면 위에 그리고 카드와 서로 강조", async () => {
@@ -1203,10 +1244,15 @@ agentTest("화면: ③ 피드백 동그라미를 해당 페이지 도면 위에 
     }
   }
   const review = JSON.parse(new TextDecoder().decode(await fixture("reviewer-result-v2.json")));
-  review.findings = ["E01", "E02", "E03"].map((id, index) => ({
+  // E05는 좌표 없이 PDF에 실제로 있는 글자만 알려 줘요. E03 글자는 PDF에 없어요.
+  const textOnly = analysis.elements.find((element) => element.id === "E05");
+  textOnly.page_number = 1;
+  textOnly.raw_text = "blueprint";
+  textOnly.location = { ...textOnly.location, x: null, y: null, bbox: null };
+  review.findings = ["E01", "E02", "E03", "E05"].map((id, index) => ({
     ...review.findings[0],
     id: `R0${index + 1}`,
-    classification: index === 0 ? "틀림" : "확인 필요",
+    classification: index === 1 || index === 2 ? "확인 필요" : "틀림",
     issue_type: index === 0 ? "표기 불일치" : "연결 불확실",
     analysis_item_ids: [id],
   }));
@@ -1227,15 +1273,28 @@ agentTest("화면: ③ 피드백 동그라미를 해당 페이지 도면 위에 
     app.querySelector("#agent-start-button").click();
     await waitFor(() => app.querySelector("#upload-screen").getAttribute("aria-busy") === "false", "② 분석이 끝나지 않았어요.");
     app.querySelector("#feedback-start-button").click();
-    await waitFor(() => app.querySelectorAll(".feedback-marker").length === 2, () => `동그라미가 그려지지 않았어요. ${app.querySelector("#review-drawing-status").textContent} ${app.querySelector("#agent-result-error").textContent} ${[...app.querySelectorAll(".finding-location-note")].map((n) => n.textContent).join(" / ")}`);
+    assert(!app.querySelector("#feedback-progress-box").hidden, "③ 피드백 진행률이 보여야 해요.");
+    assert(/^\d+%$/.test(app.querySelector("#feedback-progress-percent").textContent));
+    assert(!app.querySelector("#feedback-progress-note").hidden, "진행률이 예상값이라고 알려야 해요.");
+    await waitFor(() => app.querySelectorAll(".feedback-marker").length === 3, () => `동그라미가 그려지지 않았어요. ${app.querySelector("#review-drawing-status").textContent} ${app.querySelector("#agent-result-error").textContent} ${[...app.querySelectorAll(".finding-location-note")].map((n) => n.textContent).join(" / ")}`);
     const pages = [...app.querySelectorAll(".review-drawing-page figcaption")].map((node) => node.textContent);
     assert(pages.join() === "1페이지,2페이지", pages.join());
-    const [red, yellow] = app.querySelectorAll(".feedback-marker");
-    assert(red.classList.contains("red") && red.textContent === "1!" && red.closest(".review-drawing-page").textContent.includes("1페이지"));
-    assert(yellow.classList.contains("yellow") && yellow.textContent === "2?" && yellow.closest(".review-drawing-page").textContent.includes("2페이지"));
+    const marker = (number) => app.querySelector(`.feedback-marker[data-finding-number="${number}"]`);
+    const [red, yellow, byText] = [marker(1), marker(2), marker(4)];
+    assert(red.classList.contains("tone-red") && red.textContent === "1!" && red.closest(".review-drawing-page").textContent.includes("1페이지"));
+    assert(yellow.classList.contains("tone-orange") && yellow.textContent === "2?" && yellow.closest(".review-drawing-page").textContent.includes("2페이지"));
     const cards = app.querySelectorAll("#review-agent-findings .review-finding");
-    assert(cards[2].textContent.includes("위치 확인 필요") && !cards[2].querySelector(".finding-locate"));
-    assert(cards[0].textContent.includes("도면 표시: 1페이지"));
+    assert(cards[2].textContent.includes("위치 확인 필요") && cards[2].querySelector(".finding-locate").hidden);
+    assert(cards[0].textContent.includes("도면 표시: 1페이지") && cards[0].textContent.includes("좌표"));
+    assert(byText.dataset.source === "text" && byText.textContent === "4!" && byText.closest(".review-drawing-page").textContent.includes("1페이지"));
+    // "Hello blueprint"는 (20, 50)에서 시작하는 글자라 동그라미가 그 오른쪽 위쪽에 있어야 해요.
+    assert(parseFloat(byText.style.left) > 20 / 300 * 100 && parseFloat(byText.style.top) < 50 / 240 * 100 && parseFloat(byText.style.top) > 20 / 240 * 100,
+      `${byText.style.left} ${byText.style.top}`);
+    assert(cards[3].textContent.includes("PDF 글자 위치로 찾은") && !cards[3].querySelector(".finding-locate").hidden);
+    assert(cards[2].textContent.includes("찾지 못했어요"), cards[2].textContent);
+    assert(getComputedStyle(cards[1]).backgroundColor === "rgba(0, 0, 0, 0)" || getComputedStyle(cards[1]).backgroundColor === "rgb(255, 255, 255)",
+      "카드 전체가 색으로 칠해지면 안 돼요.");
+    await waitFor(() => app.querySelector("#feedback-progress-box").hidden, "피드백이 끝나면 진행률을 숨겨야 해요.");
     red.click();
     assert(cards[0].classList.contains("linked") && red.classList.contains("linked") && !yellow.classList.contains("linked"));
     cards[1].click();
