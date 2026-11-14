@@ -161,7 +161,23 @@ function renderReviewList(container, records, emptyMessage, renderRecord) {
 function renderReviewResult(data, responseSummary, message, analysisText) {
   $("#agent-result-title").textContent = "③ 도면 검토 결과";
   $("#result-title").textContent = "③ 도면 검토 결과";
+  const analysisDetails = $("#analysis-result-details");
+  analysisDetails.hidden = true;
   $("#agent-result-output").hidden = true;
+  if (analysisText) {
+    try {
+      const analysis = parseAgentResult(analysisText);
+      if (analysis.data.schema_version !== "2.0") {
+        renderResult(createAgentResultModel(analysis));
+        analysisDetails.hidden = false;
+        analysisDetails.open = false;
+      }
+    } catch (error) {
+      if (!(error instanceof AgentResultError)) throw error;
+    }
+  }
+  $("#agent-result-title").textContent = "③ 도면 검토 결과";
+  $("#result-title").textContent = "③ 도면 검토 결과";
   $("#review-agent-result-output").hidden = false;
   let shaftSummary = "② 분석 결과가 제공되지 않아 축 도면 설명을 만들지 않았어요.";
   if (analysisText) {
@@ -252,6 +268,8 @@ function renderResult(model) {
   const { data, source, coverage } = model;
   $("#agent-result-title").textContent = "② 도면 분석 결과";
   $("#result-title").textContent = "② 도면 분석 결과";
+  $("#analysis-result-details").hidden = false;
+  $("#analysis-result-details").open = false;
   $("#review-agent-result-output").hidden = true;
   $("#agent-result-output").hidden = false;
   const summary = model.summary.replace(/^(?:#{1,6}\s*)?(?:\*\*)?총 분석(?:\*\*)?[ \t]*[:：]?[ \t]*(?:\r?\n|$)/, "").trim();
@@ -374,6 +392,8 @@ export function createAgentResultView() {
     if (!output.hidden || !reviewOutput.hidden) {
       output.hidden = true;
       reviewOutput.hidden = true;
+      $("#analysis-result-details").hidden = true;
+      $("#analysis-result-details").open = false;
       $("#agent-result-title").textContent = "② 도면 분석 결과";
       $("#result-title").textContent = "② 분석 결과";
       progress.textContent = "입력이 바뀌었어요. 결과 보기를 다시 눌러 주세요.";
@@ -385,6 +405,8 @@ export function createAgentResultView() {
     const text = input.value;
     output.hidden = true;
     reviewOutput.hidden = true;
+    $("#analysis-result-details").hidden = true;
+    $("#analysis-result-details").open = false;
     error.textContent = "";
     progress.textContent = "결과를 정리하는 중이에요…";
     panel.setAttribute("aria-busy", "true");
@@ -433,6 +455,7 @@ export function createAgentResultView() {
       saveButton.disabled = true;
       output.hidden = true;
       reviewOutput.hidden = true;
+      $("#analysis-result-details").hidden = true;
       $("#agent-result-title").textContent = "② 도면 분석 결과";
       $("#result-title").textContent = "② 분석 결과";
       error.textContent = "";

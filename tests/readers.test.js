@@ -726,8 +726,12 @@ agentTest("화면: 도면 없이 ② 결과만 열고 붙여 넣은 내용을 �
     app.querySelector("#back-button").click();
     assert(!app.querySelector("#history-panel").hidden);
     assert(app.querySelector("#history-list li").textContent.includes("직접 입력한 ② 분석 결과"));
-    assert(!app.querySelector("#history-list li .select-button"), "저장 목록에서 ② 분석 내용을 바로 열지 않아야 해요.");
+    assert(app.querySelector("#history-list li .analysis-result-button"), "저장된 ② 분석 결과를 다시 열 수 있어야 해요.");
     assert(requests === 0, "저장된 결과를 표시할 때 전송하지 않아야 해요.");
+    app.querySelector("#back-button").click();
+    app.querySelector("#history-list li .analysis-result-button").click();
+    assert(!app.querySelector("#review-screen").hidden && app.querySelector("#feedback-actions").hidden,
+      "원본 도면과 연결할 수 없는 직접 입력 결과는 자동 피드백을 보내지 않아야 해요.");
     app.querySelector("#back-button").click();
     app.querySelector("#agent-result-only").click();
     app.querySelector("#agent-result-only").click();
@@ -1074,7 +1078,7 @@ agentTest("② 연결: 기다리기 중단과 시간 초과를 구분해 알림"
   }), "시간이 초과");
 });
 
-agentTest("화면: ② 자동 분석 결과를 붙여 넣지 않고 표시", async () => {
+agentTest("화면: ② 분석 뒤 요청할 때 ③ 피드백을 받고 상세 분석은 접어 둠", async () => {
   if (!app) await openApp();
   await selectFile("simple.pdf");
   const analysis = `총 분석\n- **파일 읽기:** 가상 PDF를 읽었어요.\n- **확인 필요:** 직접 비교해 주세요.\n\n\`\`\`json\n${await agentFixture()}\n\`\`\``;
@@ -1099,13 +1103,23 @@ agentTest("화면: ② 자동 분석 결과를 붙여 넣지 않고 표시", asy
     assert(!button.disabled);
     button.click();
     assert(button.disabled && !app.querySelector("#cancel-agent").hidden);
-    await waitFor(() => app.querySelector("#upload-screen").getAttribute("aria-busy") === "false", "② 분석·③ 검토가 끝나지 않았어요.");
+    await waitFor(() => app.querySelector("#upload-screen").getAttribute("aria-busy") === "false", "② 분석이 끝나지 않았어요.");
+    assert(!app.querySelector("#review-screen").hidden, app.querySelector("#read-error").textContent);
+    assert(app.querySelector("#agent-result-title").textContent === "② 도면 분석 결과");
+    assert(!app.querySelector("#analysis-result-details").hidden && !app.querySelector("#analysis-result-details").open);
+    assert(!app.querySelector("#agent-result-output").hidden);
+    assert(app.querySelector("#feedback-start-button").textContent === "피드백 받기");
+    assert(mock.requests.filter(({ url }) => url.pathname.endsWith("/upload")).length === 1,
+      "피드백을 요청하기 전에는 ③에 보내면 안 돼요.");
+    app.querySelector("#feedback-start-button").click();
+    await waitFor(() => app.querySelector("#agent-result-progress").textContent.includes("피드백을 받았고"), "③ 피드백이 끝나지 않았어요.");
     assert(!app.querySelector("#review-screen").hidden, app.querySelector("#read-error").textContent);
     assert(app.querySelector("#review-agent-status").textContent === "부분 완료");
     assert(app.querySelector("#agent-result-title").textContent === "③ 도면 검토 결과");
     assert(app.querySelector("#selected-file-name").textContent.includes("simple.pdf"));
     assert(app.querySelector("#review-agent-findings").textContent.includes("E03"));
-    assert(app.querySelector("#agent-result-output").hidden, "②의 상세 분석 내용은 기본 결과 화면에 표시하지 않아야 해요.");
+    assert(!app.querySelector("#analysis-result-details").hidden && !app.querySelector("#agent-result-output").hidden);
+    assert(!app.querySelector("#analysis-result-details").open, "② 분석은 기본으로 접혀 있어야 해요.");
     assert(app.querySelector("#shaft-analysis-summary").textContent.includes("축으로 분류"));
     assert(app.querySelector("#shaft-analysis-summary").textContent.includes("Ø20h7"));
     assert(!app.querySelector("#shaft-analysis-summary").textContent.includes("총 분석"));
@@ -1115,7 +1129,7 @@ agentTest("화면: ② 자동 분석 결과를 붙여 넣지 않고 표시", asy
     const reviewRequest = JSON.parse(await uploads[1].options.body.get("activity").text());
     assert(reviewRequest.text.includes("② 도면 분석 결과") && reviewRequest.text.includes("가상 PDF를 읽었어요"));
     assert(!consent.checked, "처리가 끝나면 전송 동의를 초기화해야 해요.");
-    assert(app.querySelector("#agent-result-progress").textContent.includes("검토를 마쳤어요"));
+    assert(app.querySelector("#agent-result-progress").textContent.includes("피드백을 받았고"));
     assert(app.querySelector("#history-panel").textContent.includes("simple.pdf"), "② 결과 이력은 유지해야 해요.");
   } finally {
     frame.contentWindow.fetch = originalFetch;
@@ -1123,7 +1137,7 @@ agentTest("화면: ② 자동 분석 결과를 붙여 넣지 않고 표시", asy
   }
 });
 
-agentTest("화면: ③ 연결 실패 때 ② 분석 내용은 숨기고 저장은 유지", async () => {
+agentTest("화면: ③ 연결 실패 뒤에도 ② 분석을 열고 다시 요청할 수 있음", async () => {
   if (!app) await openApp();
   await selectFile("simple.pdf");
   const analysis = `총 분석\n가상 ② 응답\n\n\`\`\`json\n${await agentFixture()}\n\`\`\``;
@@ -1143,13 +1157,18 @@ agentTest("화면: ③ 연결 실패 때 ② 분석 내용은 숨기고 저장�
     const button = app.querySelector("#agent-start-button");
     consent.click();
     button.click();
-    await waitFor(() => app.querySelector("#upload-screen").getAttribute("aria-busy") === "false", "③ 실패 후 복구 화면이 준비되지 않았어요.");
+    await waitFor(() => app.querySelector("#upload-screen").getAttribute("aria-busy") === "false", "② 분석이 끝나지 않았어요.");
+    assert(app.querySelector("#review-screen").hidden === false);
+    app.querySelector("#feedback-start-button").click();
+    await waitFor(() => app.querySelector("#agent-result-progress").textContent.includes("③ 피드백을 받지 못했어요"),
+      "③ 연결 실패 처리가 끝나지 않았어요.");
     assert(!app.querySelector("#review-screen").hidden);
-    assert(app.querySelector("#agent-result-output").hidden);
+    assert(!app.querySelector("#analysis-result-details").hidden && !app.querySelector("#agent-result-output").hidden);
+    assert(!app.querySelector("#analysis-result-details").open);
     assert(app.querySelector("#review-agent-result-output").hidden);
-    assert(!app.querySelector("#agent-result-panel").textContent.includes("가상 ② 응답"));
-    assert(app.querySelector("#read-error").textContent.includes("③ 검토를 완료하지 못했어요."));
-    assert(app.querySelector("#agent-result-progress").textContent.includes("화면에 표시하지 않아요"));
+    assert(app.querySelector("#agent-result-panel").textContent.includes("가상 ② 응답"));
+    assert(app.querySelector("#agent-result-error").textContent.includes("③ 연결 주소"));
+    assert(app.querySelector("#agent-result-progress").textContent.includes("② 분석 결과는 그대로 보관"));
     const savedAnalysis = JSON.parse(frame.contentWindow.localStorage.getItem(TEST_HISTORY_KEY))
       .find((entry) => entry.response.includes("가상 ② 응답"));
     assert(savedAnalysis && !savedAnalysis.reviewResponse, "③에 실패해도 ② 분석 결과는 저장 기록에 남아야 해요.");
@@ -1458,9 +1477,13 @@ agentTest("화면: ②·③ 결과를 저장하고 ③ 검토를 다시 열기",
     const button = app.querySelector("#agent-start-button");
     app.querySelector("#reviewer-consent").click();
     button.click();
-    await waitFor(() => app.querySelector("#upload-screen").getAttribute("aria-busy") === "false", "② 분석·③ 검토가 끝나지 않았어요.");
+    await waitFor(() => app.querySelector("#upload-screen").getAttribute("aria-busy") === "false", "② 분석이 끝나지 않았어요.");
     assert(!app.querySelector("#review-screen").hidden, app.querySelector("#read-error").textContent);
-    assert(app.querySelector("#agent-result-progress").textContent.includes("결과를 이 브라우저에 저장"));
+    assert(app.querySelector("#review-agent-result-output").hidden, "피드백을 요청하기 전에는 ③ 결과가 없어야 해요.");
+    assert(app.querySelector("#agent-result-progress").textContent.includes("② 분석이 끝났어요"));
+    app.querySelector("#feedback-start-button").click();
+    await waitFor(() => app.querySelector("#agent-result-progress").textContent.includes("피드백을 받았고"),
+      "③ 피드백이 끝나지 않았어요.");
   } finally {
     frame.contentWindow.fetch = originalFetch;
   }
@@ -1480,10 +1503,11 @@ agentTest("화면: ②·③ 결과를 저장하고 ③ 검토를 다시 열기",
     app.querySelector("#open-saved-match").click();
     assert(!app.querySelector("#review-screen").hidden, app.querySelector("#read-error").textContent);
     assert(app.querySelector("#review-agent-summary").textContent.includes("한 항목은 근거를 확인"));
-    assert(app.querySelector("#agent-result-output").hidden, "저장된 ② 분석 내용은 기본 화면에 보이지 않아야 해요.");
+    assert(!app.querySelector("#analysis-result-details").hidden && !app.querySelector("#agent-result-output").hidden);
+    assert(!app.querySelector("#analysis-result-details").open, "저장된 ② 분석 내용은 기본으로 접혀 있어야 해요.");
     assert(app.querySelector("#agent-result-progress").textContent.includes("다시 분석하지 않고"));
     app.querySelector("#back-button").click();
-    rows[0].querySelector(".select-button").click();
+    rows[0].querySelector(".review-result-button").click();
     assert(!app.querySelector("#review-screen").hidden && !app.querySelector("#review-agent-result-output").hidden);
     assert(app.querySelector("#selected-file-name").textContent.includes("simple.pdf"));
     app.querySelector("#back-button").click();
@@ -1504,6 +1528,75 @@ agentTest("화면: ②·③ 결과를 저장하고 ③ 검토를 다시 열기",
   assert(app.querySelector("#review-screen").hidden);
   assert(app.querySelector("#read-error").textContent.includes("읽을 수 없어요"));
   assert(!app.querySelector("#history-panel").hidden && frame.contentWindow.localStorage.getItem(TEST_HISTORY_KEY));
+});
+
+agentTest("화면: 저장된 ②만 다시 열고 같은 PDF를 골라 피드백 받기", async () => {
+  if (!app) await openApp();
+  if (!app.querySelector("#review-screen").hidden) app.querySelector("#back-button").click();
+  frame.contentWindow.localStorage.removeItem(TEST_HISTORY_KEY);
+  frame.contentWindow.location.reload();
+  await new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
+  app = frame.contentDocument;
+
+  await selectFile("simple.pdf");
+  const analysis = `총 분석\n저장된 ② 응답\n\n\`\`\`json\n${await agentFixture()}\n\`\`\``;
+  const analysisMock = studioMock({ activityPages: [{
+    activities: [
+      { id: "analysis-answer", type: "message", replyToId: "sent-1", text: analysis },
+      { type: "event", name: "turn.complete", replyToId: "sent-1" },
+    ],
+  }] });
+  const originalFetch = frame.contentWindow.fetch;
+  frame.contentWindow.fetch = analysisMock.fetchImpl;
+  try {
+    app.querySelector("#reviewer-consent").click();
+    app.querySelector("#agent-start-button").click();
+    await waitFor(() => app.querySelector("#upload-screen").getAttribute("aria-busy") === "false", "② 분석이 끝나지 않았어요.");
+  } finally {
+    frame.contentWindow.fetch = originalFetch;
+  }
+  const saved = JSON.parse(frame.contentWindow.localStorage.getItem(TEST_HISTORY_KEY));
+  assert(saved.length === 1 && saved[0].fingerprint && !saved[0].reviewResponse);
+
+  app.querySelector("#back-button").click();
+  frame.contentWindow.location.reload();
+  await new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
+  app = frame.contentDocument;
+  app.querySelector("#history-list .analysis-result-button").click();
+  assert(!app.querySelector("#analysis-result-details").hidden && !app.querySelector("#analysis-result-details").open);
+  assert(!app.querySelector("#feedback-actions").hidden);
+
+  let pickerOpened = false;
+  const feedbackFileInput = app.querySelector("#feedback-file-input");
+  feedbackFileInput.click = () => { pickerOpened = true; };
+  app.querySelector("#feedback-start-button").click();
+  assert(pickerOpened, "저장된 결과는 원본 PDF 선택을 안내해야 해요.");
+
+  const review = new TextDecoder().decode(await fixture("reviewer-result-v2.json"));
+  const reviewMock = studioMock({ activityPages: [{
+    activities: [
+      { id: "review-answer", type: "message", replyToId: "sent-1", text: review },
+      { type: "event", name: "turn.complete", replyToId: "sent-1" },
+    ],
+  }] });
+  frame.contentWindow.fetch = reviewMock.fetchImpl;
+  try {
+    const transfer = new frame.contentWindow.DataTransfer();
+    transfer.items.add(new frame.contentWindow.File([await fixture("simple.pdf")], "simple.pdf"));
+    feedbackFileInput.files = transfer.files;
+    feedbackFileInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+    await waitFor(() => app.querySelector("#agent-result-progress").textContent.includes("피드백을 받았고"),
+      "저장된 ② 결과의 ③ 피드백이 끝나지 않았어요.");
+    const uploads = reviewMock.requests.filter(({ url }) => url.pathname.endsWith("/upload"));
+    assert(uploads.length === 1, "저장된 ② 결과에 대해 ③으로 한 번만 보내야 해요.");
+    const activity = JSON.parse(await uploads[0].options.body.get("activity").text());
+    assert(activity.text.includes("저장된 ② 응답"));
+    const updated = JSON.parse(frame.contentWindow.localStorage.getItem(TEST_HISTORY_KEY));
+    assert(updated.length === 1 && updated[0].reviewResponse.includes('"summary"'));
+  } finally {
+    frame.contentWindow.fetch = originalFetch;
+  }
+  app.querySelector("#back-button").click();
 });
 
 agentTest("화면: 저장된 결과 삭제와 파일 이름의 HTML 미실행", async () => {
