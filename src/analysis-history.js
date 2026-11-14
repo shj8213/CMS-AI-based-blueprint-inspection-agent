@@ -10,6 +10,8 @@ function validEntry(entry) {
   return entry && typeof entry.id === "string" && typeof entry.fileName === "string"
     && typeof entry.response === "string" && typeof entry.savedAt === "string"
     && (entry.fingerprint === null || typeof entry.fingerprint === "string")
+    && (entry.kind === undefined || entry.kind === "analysis" || entry.kind === "review")
+    && (entry.reviewResponse === undefined || typeof entry.reviewResponse === "string")
     && (entry.verified === undefined || typeof entry.verified === "boolean");
 }
 
@@ -35,6 +37,10 @@ export function createAnalysisHistory({ storage = browserStorage(), key = "bluep
 
   function write(entries) {
     if (!storage) return 0;
+    if (!entries.length) {
+      storage.removeItem(key);
+      return 0;
+    }
     let remaining = entries.slice(0, MAX_ENTRIES);
     while (remaining.length) {
       try {
@@ -44,7 +50,6 @@ export function createAnalysisHistory({ storage = browserStorage(), key = "bluep
         remaining = remaining.slice(0, -1);
       }
     }
-    storage.removeItem(key);
     return 0;
   }
 
@@ -56,12 +61,13 @@ export function createAnalysisHistory({ storage = browserStorage(), key = "bluep
     get(id) {
       return list().find((entry) => entry.id === id) ?? null;
     },
-    save({ fileName, fingerprint, response }) {
+    save({ fileName, fingerprint, response, kind = "analysis" }) {
       const entry = {
         id: crypto.randomUUID(),
         fileName,
         fingerprint: fingerprint ?? null,
         response,
+        ...(kind === "review" ? { kind } : {}),
         savedAt: new Date().toISOString(),
         verified: false,
       };
@@ -74,6 +80,13 @@ export function createAnalysisHistory({ storage = browserStorage(), key = "bluep
       const entry = entries.find((item) => item.id === id);
       if (!entry) return false;
       entry.verified = Boolean(verified);
+      return write(entries) === entries.length;
+    },
+    saveReview(id, response) {
+      const entries = list();
+      const entry = entries.find((item) => item.id === id);
+      if (!entry) return false;
+      entry.reviewResponse = response;
       return write(entries) === entries.length;
     },
     remove(id) {

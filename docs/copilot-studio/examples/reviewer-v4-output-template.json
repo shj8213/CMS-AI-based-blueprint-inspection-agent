@@ -1,0 +1,12 @@
+{
+  "schema_version": "2.0",
+  "status": "입력 필요",
+  "review_basis": "입력 없음",
+  "summary": "검토 범위와 핵심 결과를 짧게 씁니다.",
+  "reviewed_pages": [],
+  "unreviewed_pages": [],
+  "findings": [],
+  "not_missing": [],
+  "limitations": [],
+  "human_review_status": "미확인"
+}

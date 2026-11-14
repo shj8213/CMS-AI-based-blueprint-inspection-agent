@@ -342,6 +342,8 @@
       .transfer-notice { padding: 12px; border: 1px solid #e5c777; border-radius: 9px; background: #fff8e6; color: #70520b; font-size: 13px; line-height: 1.7; }
       .result-navigation { display: flex; align-items: center; gap: 12px; margin-top: 12px; font-size: 12px; }
       .agent-entry { margin-top: 16px; }
+      .advanced-options { margin-top: 20px; color: #64748b; }
+      .advanced-options > summary { padding: 8px 2px; cursor: pointer; font-size: 13px; font-weight: 700; }
       .saved-match { margin: 12px 0; padding: 12px; border-radius: 10px; background: #edf7f0; font-size: 12px; line-height: 1.6; }
       .saved-match p { margin: 0 0 8px; color: #17653b; font-weight: 700; }
       .history-list { margin: 10px 0 0; padding: 0; list-style: none; }
@@ -378,6 +380,9 @@
       .agent-details summary { padding: 12px; cursor: pointer; font-size: 13px; font-weight: 700; }
       .agent-details-content { padding: 0 12px 12px; }
       .agent-empty { color: #53617a; }
+      .review-finding { margin: 10px 0; padding: 12px; border: 1px solid #e1e7f0; border-radius: 9px; }
+      .review-finding h4 { margin: 0 0 8px; font-size: 14px; }
+      .review-finding p { margin: 6px 0; overflow-wrap: anywhere; white-space: pre-wrap; }
 
       @media (max-width: 740px) {
         .page { width: min(100% - 28px, 540px); }
@@ -522,7 +527,7 @@
         <section class="screen" id="upload-screen" aria-labelledby="main-title" hidden>
           <div class="intro">
             <h1 id="main-title">도면을 올리면 읽어 드려요</h1>
-            <p>도면을 올리고 버튼을 한 번 누르면 결과가 나와요.</p>
+            <p>도면 분석부터 검토 피드백과 수정 지원까지 돕는 도구예요. 현재는 1차로 축 도면 분석을 시험하고 있어요.</p>
           </div>
           <ol class="steps" aria-label="사용 순서">
             <li class="on"><span>1</span>도면 올리기</li>
@@ -548,11 +553,19 @@
             </div>
             <div id="file-list" aria-live="polite"></div>
             <p class="privacy-note">도면을 분석하면 파일이 Microsoft 서비스로 전송돼요. 자세한 안내는 아래 ‘도움말과 예제’를 읽어 주세요.</p>
-            <div class="progress-box" id="progress-box" hidden>
-              <div class="progress-head"><span id="progress-label"></span><strong id="progress-percent">0%</strong></div>
-              <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
-              <p class="privacy-note" id="progress-note" hidden>분석 시간은 도면에 따라 달라서 진행률은 예상값이에요.</p>
+                        <div class="progress-box" id="progress-box" hidden>
+                          <div class="progress-head"><span id="progress-label"></span><strong id="progress-percent">0%</strong></div>
+                          <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+                          <p class="privacy-note" id="progress-note" hidden>분석 시간은 도면에 따라 달라서 진행률은 예상값이에요.</p>
             </div>
+            <label class="privacy-note" for="reviewer-consent">
+              <input id="reviewer-consent" type="checkbox">
+              선택한 PDF를 Microsoft Copilot Studio에 보내는 것에 동의합니다.
+            </label>
+            <div class="privacy-note" id="hosted-connection-note" hidden>
+              공개 홈페이지의 자동 연결은 남용 방지를 위해 Cloudflare 확인 절차를 사용해요. 접속 정보가 Cloudflare로 전달되고, 필요하면 확인 창이 나타날 수 있어요.
+            </div>
+            <div id="turnstile-container" aria-label="자동 연결 보안 확인" hidden></div>
             <p class="read-message" id="read-progress" role="status"></p>
             <p class="read-message error" id="read-error" role="alert"></p>
             <div class="saved-match" id="saved-match" hidden>
@@ -570,13 +583,14 @@
               <p class="privacy-note">‘이 브라우저에서만 읽기’를 선택하면 파일을 외부로 보내지 않아요. 스캔 PDF의 글자는 OCR로 찾으므로 원본과 비교해 주세요.</p>
               <p class="privacy-note">확인용 예제 받기: <a href="./tests/fixtures/simple.dxf" download>DXF</a> · <a href="./tests/fixtures/simple.pdf" download>일반 PDF</a> · <a href="./tests/fixtures/scan.pdf" download>스캔 PDF</a></p>
               <p class="privacy-note">검토 시험용 DXF 받기: <a href="./tests/fixtures/review-a.dxf" download>예제 A</a> · <a href="./tests/fixtures/review-b.dxf" download>예제 B</a> · <a href="./tests/fixtures/review-c.dxf" download>예제 C</a> — 개인정보·기밀이 없는 가상 자료예요.</p>
-              <p class="privacy-note">지금은 도면을 읽어 정리하는 기능만 연결돼 있어요. 도면이 맞는지 판단하는 기능은 아직 없어요.</p>
+              <p class="privacy-note">축 분석 연습: <a href="./tests/fixtures/shaft-practice-reference.pdf" download>기준 도면</a> · <a href="./tests/fixtures/shaft-practice-challenge.pdf" download>비교 도면</a> — 비교 도면의 불일치를 먼저 찾고, 분석 후 정답표를 확인하세요.</p>
+              <p class="privacy-note">현재 1차 시험은 단일 축 부품도를 중심으로 진행해요. 다른 종류 도면의 업로드를 막지는 않지만 축이라고 단정하지 않도록 안내해요. ‘도면 분석하기’는 PDF를 Microsoft 서비스에 보내요. 전송 권한이 있고 개인정보·기밀이 없는 도면만 사용해 주세요. 분석은 참고용이며 중요한 내용은 원본과 직접 비교해 주세요.</p>
               <h3>이미 받은 분석 결과가 있나요?</h3>
               <button class="select-button" id="agent-result-only" type="button">기존 결과 직접 보기</button>
             </div>
           </details>
           <section class="card upload-panel agent-entry" id="history-panel" aria-labelledby="history-title" hidden>
-            <h2 id="history-title">저장된 ② 분석 결과</h2>
+            <h2 id="history-title">저장된 결과</h2>
             <p class="subtext">분석이 끝난 결과는 이 컴퓨터의 브라우저에 자동 저장돼요. 다시 기다리지 않고 바로 열 수 있어요.</p>
             <ul class="history-list" id="history-list"></ul>
             <p class="privacy-note">저장된 결과는 외부로 보내지 않지만, 이 브라우저를 쓰는 사람은 볼 수 있어요. 필요 없으면 삭제해 주세요. 최근 20개까지 보관해요.</p>
@@ -683,22 +697,54 @@
                 </div>
               </details>
             </div>
+            <div id="review-agent-result-output" hidden>
+              <h3>도면 간단 설명</h3>
+              <p class="agent-summary" id="shaft-analysis-summary"></p>
+              <h3>검토 결과</h3>
+              <dl class="agent-overview">
+                <div><dt>검토 상태</dt><dd id="review-agent-status"></dd></div>
+                <div><dt>사람의 도면 대조</dt><dd id="review-agent-human-status"></dd></div>
+              </dl>
+              <h3>쉬운 말로 요약</h3>
+              <div class="agent-summary" id="review-agent-summary"></div>
+              <h3>확인할 점 <span id="review-agent-finding-count"></span></h3>
+              <p class="subtext">‘틀림’도 참고 결과예요. 원본 도면과 직접 비교해 주세요.</p>
+              <div id="review-agent-findings"></div>
+              <details class="agent-details">
+                <summary>추가 검토 정보</summary>
+                <div class="agent-details-content">
+                  <dl class="agent-overview">
+                    <div><dt>확인한 자료</dt><dd id="review-agent-basis"></dd></div>
+                    <div><dt>확인한 페이지</dt><dd id="review-agent-pages"></dd></div>
+                  </dl>
+                  <h3>이미 확인된 정보 <span id="review-agent-not-missing-count"></span></h3>
+                  <div id="review-agent-not-missing"></div>
+                  <h3>남은 한계 <span id="review-agent-limitations-count"></span></h3>
+                  <div id="review-agent-limitations"></div>
+                </div>
+              </details>
+              <p class="subtext">이 화면은 JSON을 이 브라우저 안에서만 읽어요. 결과는 설계 승인이나 규격 인증이 아니며, 사람의 확인 상태는 바뀌지 않아요.</p>
+            </div>
             <details class="agent-details" id="agent-manual">
               <summary>기존 결과 직접 입력 (시험용)</summary>
               <div class="agent-details-content">
                 <p class="subtext" id="agent-result-help">
-                  이미 받은 ②의 총 분석과 JSON을 함께 복사하거나 JSON만 붙여 넣으세요.
+                  이미 받은 ② 분석 결과 또는 ③ 검토 결과의 JSON을 붙여 넣으세요.
                   원본 도면과 같은 결과인지 직접 확인해 주세요.
                 </p>
-                <label for="agent-result-input">② 응답 또는 JSON</label>
+                <label for="agent-result-input">② 분석 또는 ③ 검토 응답·JSON</label>
                 <textarea id="agent-result-input" spellcheck="false" autocomplete="off" aria-describedby="agent-result-help"
-                  placeholder="②의 응답이나 JSON 전체를 여기에 붙여 넣으세요."></textarea>
+                  placeholder="② 분석 결과나 ③ 검토 결과의 JSON 전체를 여기에 붙여 넣으세요."></textarea>
                 <p class="privacy-note">
-                  직접 입력한 내용은 이 브라우저 안에서만 처리하며 별도로 저장하거나 전송하지 않아요.
+                  직접 입력한 내용은 자동 저장되거나 전송되지 않아요. 아래 저장 버튼을 눌렀을 때만 이 브라우저에 보관돼요.
                   처음으로 돌아가거나 도면을 다시 선택하면 입력과 결과가 지워져요.
-                  <a href="./tests/fixtures/agent-result.json" target="_blank" rel="noopener">가상 예제 JSON 보기</a>
+                  <a href="./tests/fixtures/agent-result.json" target="_blank" rel="noopener">② 가상 예제 JSON</a> ·
+                  <a href="./docs/copilot-studio/examples/reviewer-v4-output-template.json" target="_blank" rel="noopener">③ JSON 틀</a>
                 </p>
-                <button class="select-button" id="agent-result-show" type="button">결과 보기</button>
+                <div class="result-toolbar">
+                  <button class="select-button" id="agent-result-show" type="button">결과 보기</button>
+                  <button class="select-button" id="agent-result-save" type="button" hidden disabled>이 결과 저장</button>
+                </div>
               </div>
             </details>
           </section>

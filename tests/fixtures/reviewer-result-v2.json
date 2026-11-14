@@ -1,0 +1,36 @@
+{
+  "schema_version": "2.0",
+  "status": "부분 완료",
+  "review_basis": "도면과 ② 분석 결과 확인",
+  "summary": "한 항목은 근거를 확인했고, 나머지는 원본 도면과 더 비교해야 해요.",
+  "reviewed_pages": [1],
+  "unreviewed_pages": [2],
+  "findings": [
+    {
+      "id": "R01",
+      "classification": "확인 필요",
+      "issue_type": "연결 불확실",
+      "analysis_item_ids": ["E03"],
+      "location": "1페이지 · 뷰 2",
+      "what": "<script>도면에서 확인할 치수</script>",
+      "why": "이 치수가 어느 형상에 해당하는지 아직 알 수 없어요.",
+      "basis": "기준 자료에서 확인하지 못함",
+      "how_to_resolve": "원본 도면에서 치수 보조선이 닿는 형상을 확인해 주세요.",
+      "evidence": "②의 E03에 치수 원문이 기록되어 있어요.",
+      "confidence": "중간",
+      "confidence_reason": "치수 글자는 읽혔지만 연결 위치는 불확실해요.",
+      "intent_hypothesis": "가능한 의도(추정): 가능한 의도(추정): 이 치수는 뷰 2의 인접 형상을 가리키려 했을 수 있습니다. / 근거: ②의 E03에 해당 위치의 치수 원문이 기록되어 있습니다. / 다른 가능성: 다른 형상을 가리키거나 누락된 보조선이 있을 수 있습니다. / 확신: 낮음",
+      "next_check": "1페이지 뷰 2를 확대해 확인해 주세요."
+    }
+  ],
+  "not_missing": [
+    {
+      "item": "재질",
+      "analysis_item_ids": ["E07"],
+      "location": "1페이지 · 표제란",
+      "reason": "표제란에서 재질 표기를 확인했어요."
+    }
+  ],
+  "limitations": ["[미검토] 2페이지는 확인하지 못했어요."],
+  "human_review_status": "미확인"
+}

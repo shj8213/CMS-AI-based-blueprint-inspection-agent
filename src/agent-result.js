@@ -54,7 +54,76 @@ function checkConfirmation(record, label) {
   }
 }
 
+function validateReviewResult(data) {
+  const statuses = ["검토 완료", "부분 완료", "입력 필요"];
+  const classifications = ["틀림", "확인 필요"];
+  const issueTypes = ["누락", "읽기 불확실", "연결 불확실", "표기 불일치"];
+  const confidences = ["높음", "중간", "낮음"];
+  if (!statuses.includes(data.status)) {
+    throw new AgentResultError("③ 검토 결과의 상태가 정해진 값과 달라요.");
+  }
+  for (const key of ["review_basis", "summary", "human_review_status"]) {
+    if (typeof data[key] !== "string") {
+      throw new AgentResultError(`③ 검토 결과의 ${key}는 글자여야 해요.`);
+    }
+  }
+  if (data.human_review_status !== "미확인") {
+    throw new AgentResultError("사람이 직접 확인했는지는 홈페이지에서 바꿀 수 없어요. human_review_status를 '미확인'으로 두세요.");
+  }
+  for (const key of ["reviewed_pages", "unreviewed_pages"]) {
+    checkList(data, key, key === "reviewed_pages" ? "확인한 페이지" : "확인하지 못한 페이지");
+    if (!data[key] || data[key].some((page) => !Number.isInteger(page) || page < 1)) {
+      throw new AgentResultError(`${key}에는 1 이상의 페이지 번호만 넣어 주세요.`);
+    }
+  }
+  checkList(data, "findings", "지적", true);
+  checkList(data, "not_missing", "이미 확인된 정보", true);
+  checkList(data, "limitations", "검토 한계");
+  if (!data.findings || !data.not_missing || !data.limitations) {
+    throw new AgentResultError("③ 검토 결과에 findings, not_missing, limitations 목록을 모두 넣어 주세요.");
+  }
+  if (data.limitations.some((item) => typeof item !== "string")) {
+    throw new AgentResultError("검토 한계는 글자 목록이어야 해요.");
+  }
+  for (const [index, finding] of data.findings.entries()) {
+    const label = `${index + 1}번째 지적`;
+    if (!classifications.includes(finding.classification) || !issueTypes.includes(finding.issue_type)) {
+      throw new AgentResultError(`${label}의 분류 값이 정해진 값과 달라요.`);
+    }
+    if (!confidences.includes(finding.confidence)) {
+      throw new AgentResultError(`${label}의 신뢰도는 높음, 중간, 낮음 중 하나여야 해요.`);
+    }
+    for (const key of ["id", "location", "what", "why", "basis", "how_to_resolve", "evidence", "confidence_reason", "next_check"]) {
+      if (typeof finding[key] !== "string") {
+        throw new AgentResultError(`${label}의 ${key}는 글자여야 해요.`);
+      }
+    }
+    if (finding.intent_hypothesis != null && typeof finding.intent_hypothesis !== "string") {
+      throw new AgentResultError(`${label}의 intent_hypothesis는 글자여야 해요.`);
+    }
+    checkList(finding, "analysis_item_ids", `${label}의 ② 항목 ID`);
+    if (!finding.analysis_item_ids || finding.analysis_item_ids.some((id) => typeof id !== "string")) {
+      throw new AgentResultError(`${label}의 ② 항목 ID는 글자 목록이어야 해요.`);
+    }
+  }
+  for (const [index, item] of data.not_missing.entries()) {
+    for (const key of ["item", "location", "reason"]) {
+      if (typeof item[key] !== "string") {
+        throw new AgentResultError(`이미 확인된 정보 ${index + 1}번째 항목의 ${key}는 글자여야 해요.`);
+      }
+    }
+    checkList(item, "analysis_item_ids", `이미 확인된 정보 ${index + 1}번째 항목의 ② 항목 ID`);
+    if (!item.analysis_item_ids || item.analysis_item_ids.some((id) => typeof id !== "string")) {
+      throw new AgentResultError(`이미 확인된 정보 ${index + 1}번째 항목의 ② 항목 ID는 글자 목록이어야 해요.`);
+    }
+  }
+}
+
 function validateResult(data) {
+  if (isRecord(data) && data.schema_version === "2.0") {
+    validateReviewResult(data);
+    return;
+  }
   if (!isRecord(data) || !RESULT_LISTS.some(([key]) => key in data) && !("status" in data)) {
     throw new AgentResultError("② 분석 결과 형식이 아니에요. 상태와 목록이 들어 있는 JSON 전체를 복사해 주세요.");
   }
@@ -175,6 +244,79 @@ export function parseAgentResult(input) {
   }
   validateResult(data);
   return { data, summary };
+}
+
+export function createShaftSummary(input) {
+  const data = typeof input === "string" ? parseAgentResult(input).data : input?.data ?? input;
+  if (!isRecord(data) || data.schema_version === "2.0") {
+    return "② 분석 결과가 없어 축 도면 설명을 만들지 않았어요.";
+  }
+
+  const isShaftFeature = (feature) => {
+    const type = typeof feature.type === "string" ? feature.type.trim().toLowerCase().replace(/\s+/g, "") : "";
+    return ["축", "축전체", "축구간", "축지름구간", "축형상", "계단축", "shaft", "shaftsegment"].includes(type);
+  };
+  const shaftFeatures = (data.features ?? []).filter((feature) => {
+    return isShaftFeature(feature);
+  });
+  if (!shaftFeatures.length) {
+    return "② 분석 결과에 축으로 분류된 형상이 없어 축 도면 설명을 만들지 않았어요. 부품 종류를 확인할 수 없어요.";
+  }
+
+  const featureNames = [...new Set(
+    (data.features ?? [])
+      .filter((feature) => feature.needs_confirmation === false && !needsAttention(feature))
+      .map((feature) => typeof feature.type === "string" ? feature.type.trim() : "")
+      .filter((type) => type && !isShaftFeature({ type })),
+  )];
+  const elements = new Map((data.elements ?? []).map((element) => [String(element.id), element]));
+  const dimensions = [];
+  const seenDimensions = new Set();
+  for (const feature of shaftFeatures) {
+    if (needsAttention(feature)) continue;
+    for (const attribute of feature.attributes ?? []) {
+      if (attribute.link_status !== "연결됨") continue;
+      for (const id of attribute.linked_element_ids ?? []) {
+        const element = elements.get(String(id));
+        if (!element || !isDimension(element) || needsAttention(element) || isBlank(element.raw_text)) continue;
+        const text = `${displayValue(attribute.name, "치수")}: ${String(element.raw_text).trim()}`;
+        if (seenDimensions.has(text)) continue;
+        seenDimensions.add(text);
+        dimensions.push(text);
+        if (dimensions.length === 4) break;
+      }
+      if (dimensions.length === 4) break;
+    }
+    if (dimensions.length === 4) break;
+  }
+
+  const parts = ["② 분석 결과에는 이 도면이 축으로 분류되어 있어요."];
+  if (featureNames.length) parts.push(`함께 기록된 형상: ${featureNames.slice(0, 4).join(", ")}.`);
+  parts.push(dimensions.length
+    ? `연결이 확인된 치수 표기: ${dimensions.join("; ")}.`
+    : "축 형상과 연결이 확인된 치수 표기가 없어요.");
+  const ksReferences = [...new Set(
+    (data.elements ?? [])
+      .filter((element) => element.category === "표준참조" && !needsAttention(element) && !isBlank(element.raw_text))
+      .map((element) => String(element.raw_text).trim())
+      .slice(0, 3),
+  )];
+  parts.push(ksReferences.length
+    ? `도면에 적힌 KS 표기: ${ksReferences.join(", ")}. 이 표기만으로 규격 적합성을 판정하지 않아요.`
+    : "② 분석 결과에 확인된 KS 표기가 없어 규격 적합성은 판단하지 않았어요.");
+
+  const needsCheck = data.status !== "완료"
+    || (data.source?.unanalyzed_pages?.length ?? 0) > 0
+    || (data.pages ?? []).some((page) => (page.views ?? []).some((view) => view.read_coverage !== "확대 판독"))
+    || (data.features ?? []).some(needsAttention)
+    || (data.elements ?? []).some(needsAttention)
+    || (data.stage_log ?? []).some((stage) => stage.result !== "완료");
+  if (data.status === "완료" && (data.stage_log ?? []).some((stage) => stage.result !== "완료")) {
+    parts.push("전체 상태는 완료지만 단계별 결과에는 확인 필요가 남아 있어요.");
+  }
+  if (needsCheck) parts.push("읽지 못했거나 확인이 필요한 부분이 있어 원본 도면과 대조해 주세요.");
+  parts.push("이 설명은 ②의 기록을 정리한 것이며, 설계 적합성이나 KS 기준 준수는 판정하지 않아요.");
+  return parts.join(" ");
 }
 
 export function displayValue(value, emptyText = "없음") {
@@ -394,6 +536,13 @@ export function createAgentResultModel({ data, summary }) {
     if (stage.result !== "완료") addConfirmation(label, `단계 상태: ${displayValue(stage.result, "확인 필요")}`);
     if (stage.issues == null) addConfirmation(label, "남은 문제 목록이 기록되지 않았어요.");
     else for (const issue of stage.issues) addConfirmation(label, displayValue(issue, "내용 확인 필요"));
+  }
+  const incompleteStages = stages.filter((stage) => !stage.missing && stage.result !== "완료");
+  if (data.status === "완료" && incompleteStages.length) {
+    addConfirmation(
+      "전체 결과",
+      `전체 상태는 완료지만 ${incompleteStages.map((stage) => `${displayValue(stage.stage)}단계`).join(", ")}에 확인할 내용이 남아 있어요.`,
+    );
   }
   for (const limitation of data.limitations ?? []) {
     addConfirmation("판독 한계", displayValue(limitation, "내용 확인 필요"));

@@ -1,9 +1,15 @@
 import { buildDxfAgentMessage } from "./agent-input.js";
 import { readDxf } from "./dxf.js";
 import { readPdf } from "./pdf.js";
-import { AgentResultError } from "./agent-result.js";
+import { AgentResultError, parseAgentResult } from "./agent-result.js";
 import { createAgentResultView } from "./agent-result-view.js";
-import { analyzeDrawingWithStudio, StudioConnectionError } from "./studio-connection.js";
+import {
+  analyzeDrawingWithStudio,
+  getHostedStudioConfig,
+  getHostedStudioToken,
+  reviewDrawingWithStudio,
+  StudioConnectionError,
+} from "./studio-connection.js";
 import { createAnalysisHistory, fileFingerprint } from "./analysis-history.js";
 import { buildReferenceExamples, REFERENCE_FILE_NAME } from "./reference-examples.js";
 
@@ -17,6 +23,7 @@ const savedTime = (value) => new Intl.DateTimeFormat("ko-KR", { dateStyle: "medi
 const fileInput = $("#file-input");
 const startButton = $("#start-button");
 const agentStartButton = $("#agent-start-button");
+const reviewerConsent = $("#reviewer-consent");
 const cancelAgentButton = $("#cancel-agent");
 const dropArea = $("#drop-area");
 const pageSelect = $("#page-select");
@@ -30,6 +37,13 @@ let offset = 0;
 let agentController = null;
 let chosenFingerprint = null;
 let fileToken = 0;
+let hostedMode = false;
+let hostedSetupError = false;
+let hostedWidgetId = null;
+let hostedChallengeResolve = null;
+let hostedChallengeReject = null;
+let hostedChallengeTimer = null;
+let hostedChallengeSignal = null;
 
 const number = (value) => new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 3 }).format(value);
 const point = (value) => `(${number(value.x)}, ${number(value.y)})`;
@@ -69,11 +83,110 @@ function reportProgress(message) {
   else if (message.includes("확인하는")) setProgressPercent(5);
 }
 
+function updateAgentStartButton() {
+  agentStartButton.disabled = busy
+    || !chosenFile
+    || !chosenFile.name.toLowerCase().endsWith(".pdf")
+    || !reviewerConsent.checked
+    || hostedSetupError;
+}
+
+function finishHostedChallenge(error, token = null) {
+  if (!hostedChallengeResolve) return;
+  const resolve = hostedChallengeResolve;
+  const reject = hostedChallengeReject;
+  hostedChallengeResolve = null;
+  hostedChallengeReject = null;
+  clearTimeout(hostedChallengeTimer);
+  hostedChallengeSignal?.removeEventListener("abort", hostedChallengeAbort);
+  hostedChallengeSignal = null;
+  if (error) reject(error);
+  else resolve(token);
+}
+
+function hostedChallengeAbort() {
+  finishHostedChallenge(new DOMException("보안 확인이 취소됐어요.", "AbortError"));
+}
+
+function requestHostedChallenge(signal) {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise((resolve, reject) => {
+    hostedChallengeResolve = resolve;
+    hostedChallengeReject = reject;
+    hostedChallengeSignal = signal;
+    signal.addEventListener("abort", hostedChallengeAbort, { once: true });
+    hostedChallengeTimer = setTimeout(
+      () => finishHostedChallenge(new Error("보안 확인 시간이 초과됐어요. 다시 눌러 주세요.")),
+      60_000,
+    );
+    try {
+      window.turnstile.reset(hostedWidgetId);
+      window.turnstile.execute(hostedWidgetId);
+    } catch (error) {
+      finishHostedChallenge(new Error("보안 확인을 시작하지 못했어요."));
+    }
+  });
+}
+
+function loadTurnstile() {
+  if (window.turnstile) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+    script.async = true;
+    script.defer = true;
+    script.onload = () => window.turnstile ? resolve() : reject(new Error("보안 확인을 시작하지 못했어요."));
+    script.onerror = () => reject(new Error("보안 확인 기능을 불러오지 못했어요."));
+    document.head.append(script);
+  });
+}
+
+async function configureHostedConnection() {
+  let config;
+  try {
+    config = await getHostedStudioConfig();
+  } catch (error) {
+    console.error("자동 연결 설정 확인 실패:", error instanceof Error ? error.name : typeof error);
+    hostedSetupError = true;
+    $("#read-error").textContent = error.message;
+    updateAgentStartButton();
+    return;
+  }
+  if (!config) return;
+  hostedMode = true;
+  $("#hosted-connection-note").hidden = false;
+  $("#turnstile-container").hidden = false;
+  updateAgentStartButton();
+  try {
+    await loadTurnstile();
+    hostedWidgetId = window.turnstile.render("#turnstile-container", {
+      sitekey: config.siteKey,
+      action: "studio-connect",
+      size: "invisible",
+      appearance: "interaction-only",
+      callback: (token) => {
+        finishHostedChallenge(null, token);
+      },
+      "expired-callback": () => {
+        finishHostedChallenge(new Error("보안 확인 시간이 지났어요. 다시 눌러 주세요."));
+      },
+      "error-callback": () => {
+        finishHostedChallenge(new Error("자동 연결 보안 확인을 완료하지 못했어요."));
+      },
+    });
+  } catch (error) {
+    hostedSetupError = true;
+    $("#read-error").textContent = error.message;
+    updateAgentStartButton();
+  }
+}
+
 function setBusy(value, kind = null) {
   busy = value;
   $("#upload-screen").setAttribute("aria-busy", String(value));
   startButton.disabled = value || !chosenFile;
-  agentStartButton.disabled = value || !chosenFile;
+  updateAgentStartButton();
+  reviewerConsent.disabled = value;
   $("#select-button").disabled = value;
   $("#agent-result-only").disabled = value;
   fileInput.disabled = value;
@@ -106,10 +219,11 @@ async function checkSavedMatch(file) {
   if (token !== fileToken || file !== chosenFile) return;
   chosenFingerprint = fingerprint;
   const entry = analysisHistory.find(fingerprint);
-  if (!entry) return;
+  if (!entry || (!entry.reviewResponse && entry.kind !== "review")) return;
   $("#saved-match-text").textContent =
-    `이 도면은 ${savedTime(entry.savedAt)}에 분석한 결과가 저장되어 있어요. 다시 기다리지 않고 바로 볼 수 있어요.`;
+    `이 도면의 ③ 검토 결과가 ${savedTime(entry.savedAt)}에 저장되어 있어요.`;
   $("#open-saved-match").dataset.id = entry.id;
+  $("#open-saved-match").textContent = "저장된 검토 결과 보기";
   $("#saved-match").hidden = false;
 }
 
@@ -148,7 +262,7 @@ function renderHistory() {
     item.className = "file-row";
     const type = document.createElement("span");
     type.className = "file-type";
-    type.textContent = "②";
+    type.textContent = entry.kind === "review" ? "③" : entry.reviewResponse ? "②+③" : "②";
     const info = document.createElement("div");
     info.className = "file-info";
     const name = document.createElement("div");
@@ -175,13 +289,17 @@ function renderHistory() {
       updateReferenceButton();
     });
     verifyLabel.append(verify, "확인 완료");
-    const open = document.createElement("button");
-    open.className = "select-button";
-    open.type = "button";
-    open.textContent = "결과 보기";
-    open.setAttribute("aria-label", `${entry.fileName} 저장된 결과 보기`);
-    open.disabled = busy;
-    open.addEventListener("click", () => openSaved(entry.id));
+    const buttons = [];
+    if (entry.reviewResponse || entry.kind === "review") {
+      const openReview = document.createElement("button");
+      openReview.className = "select-button review-result-button";
+      openReview.type = "button";
+      openReview.textContent = "검토 결과 보기";
+      openReview.setAttribute("aria-label", `${entry.fileName} 저장된 ③ 검토 결과 보기`);
+      openReview.disabled = busy;
+      openReview.addEventListener("click", () => openSaved(entry.id, "review"));
+      buttons.push(openReview);
+    }
     const remove = document.createElement("button");
     remove.className = "remove-button";
     remove.type = "button";
@@ -193,12 +311,12 @@ function renderHistory() {
       renderHistory();
       if ($("#open-saved-match").dataset.id === entry.id) hideSavedMatch();
     });
-    item.append(type, info, verifyLabel, open, remove);
+    item.append(type, info, verifyLabel, ...buttons, remove);
     return item;
   }));
 }
 
-function openSaved(id) {
+function openSaved(id, resultType = "analysis") {
   if (busy) return;
   const entry = analysisHistory.get(id);
   $("#read-error").textContent = "";
@@ -208,27 +326,40 @@ function openSaved(id) {
     renderHistory();
     return;
   }
+  const response = resultType === "review"
+    ? entry.kind === "review" ? entry.response : entry.reviewResponse
+    : entry.response;
+  if (!response) {
+    $("#read-error").textContent = "저장된 ③ 검토 결과가 없어요.";
+    return;
+  }
+  const analysisResponse = resultType === "review" && entry.kind !== "review" ? entry.response : null;
   try {
     agentResultView.reset();
-    agentResultView.showResponse(entry.response);
+    agentResultView.showResponse(response, analysisResponse);
   } catch (error) {
     agentResultView.reset();
-    analysisHistory.remove(entry.id);
-    renderHistory();
-    hideSavedMatch();
-    $("#read-error").textContent = "저장된 결과를 읽을 수 없어 목록에서 지웠어요. 도면을 다시 분석해 주세요.";
+    if (resultType === "analysis") {
+      analysisHistory.remove(entry.id);
+      renderHistory();
+      hideSavedMatch();
+      $("#read-error").textContent = "저장된 ② 결과를 읽을 수 없어 목록에서 지웠어요. 도면을 다시 분석해 주세요.";
+    } else {
+      $("#read-error").textContent = "저장된 ③ 검토 결과를 읽을 수 없어요. ② 결과는 보관되어 있어요.";
+    }
     console.error("저장된 결과 열기 실패:", error instanceof Error ? error.name : typeof error);
     return;
   }
   showReview(false, entry.fileName);
   $("#agent-result-progress").textContent =
-    `${savedTime(entry.savedAt)}에 저장된 결과예요. 다시 분석하지 않고 바로 열었어요.`;
+    `${savedTime(entry.savedAt)}에 이 브라우저에 저장된 ${resultType === "review" ? "③ 검토" : "② 분석"} 결과예요. 다시 분석하지 않고 전송하지도 않고 바로 열었어요.`;
 }
 
 function showFile(file) {
   if (busy) return;
   $("#read-error").textContent = "";
   $("#read-progress").textContent = "";
+  reviewerConsent.checked = false;
   const extension = file.name.split(".").pop().toLowerCase();
   chosenFile = ["dxf", "pdf"].includes(extension) ? file : null;
   if (!chosenFile) {
@@ -243,7 +374,7 @@ function renderFile() {
   const container = $("#file-list");
   container.replaceChildren();
   startButton.disabled = busy || !chosenFile;
-  agentStartButton.disabled = busy || !chosenFile;
+  updateAgentStartButton();
   if (!chosenFile) return;
   const row = document.createElement("div");
   row.className = "file-row";
@@ -267,6 +398,7 @@ function renderFile() {
   remove.setAttribute("aria-label", "선택한 파일 지우기");
   remove.addEventListener("click", () => {
     chosenFile = null;
+    reviewerConsent.checked = false;
     fileInput.value = "";
     $("#read-error").textContent = "";
     checkSavedMatch(null);
@@ -316,7 +448,7 @@ function renderAgentInput() {
 function showReview(hasDrawing, agentFileName = null) {
   $(".reading-results").hidden = !hasDrawing;
   $(".review-layout").hidden = !hasDrawing;
-  $("#result-title").textContent = hasDrawing ? "도면 읽기 결과" : "② 분석 결과";
+  $("#result-title").textContent = hasDrawing ? "도면 읽기 결과" : $("#agent-result-title").textContent;
   $("#back-button").textContent = hasDrawing ? "도면 다시 선택" : "처음으로";
   if (!hasDrawing) {
     $("#selected-file-name").textContent = agentFileName
@@ -507,10 +639,36 @@ function renderFeedback(elements, flip, extent) {
 }
 
 $("#select-button").addEventListener("click", () => fileInput.click());
+reviewerConsent.addEventListener("change", () => {
+  updateAgentStartButton();
+});
 $("#agent-result-only").addEventListener("click", () => {
   if (!busy) {
     agentResultView.openManual();
     showReview(false);
+  }
+});
+$("#agent-result-save").addEventListener("click", () => {
+  const input = $("#agent-result-input");
+  try {
+    const parsed = parseAgentResult(input.value);
+    const isReview = parsed.data.schema_version === "2.0";
+    const entry = analysisHistory.save({
+      fileName: isReview ? "직접 입력한 ③ 검토 결과" : "직접 입력한 ② 분석 결과",
+      fingerprint: null,
+      response: input.value,
+      kind: isReview ? "review" : "analysis",
+    });
+    if (!entry) {
+      $("#agent-result-progress").textContent = "저장하지 못했어요. 브라우저 저장 공간을 확인해 주세요.";
+      return;
+    }
+    renderHistory();
+    $("#agent-result-progress").textContent = "이 결과를 이 브라우저에 저장했어요. 처음 화면의 저장 목록에서 다시 열 수 있어요.";
+    $("#agent-result-save").disabled = true;
+  } catch (error) {
+    $("#agent-result-progress").textContent =
+      error instanceof AgentResultError ? error.message : "결과를 저장하지 못했어요. 다시 시도해 주세요.";
   }
 });
 fileInput.addEventListener("change", () => {
@@ -561,36 +719,78 @@ startButton.addEventListener("click", async () => {
   }
 });
 agentStartButton.addEventListener("click", async () => {
-  if (!chosenFile || busy) return;
+  if (!chosenFile || !chosenFile.name.toLowerCase().endsWith(".pdf") || !reviewerConsent.checked || busy) return;
   const file = chosenFile;
+  let analysisResponse = null;
   agentController = new AbortController();
   setBusy(true, "agent");
   $("#read-error").textContent = "";
   startProgress(true);
   try {
-    const response = await analyzeDrawingWithStudio(file, {
+    let hostedTokens = null;
+    if (hostedMode) {
+      $("#read-progress").textContent = "② 연결 보안 확인 중이에요…";
+      const challenge = await requestHostedChallenge(agentController.signal);
+      hostedTokens = await getHostedStudioToken("analysis", challenge, { signal: agentController.signal });
+    }
+    analysisResponse = await analyzeDrawingWithStudio(file, {
+      hostedAccess: hostedTokens,
       signal: agentController.signal,
       onProgress: reportProgress,
     });
-    stopProgress(true);
-    agentResultView.reset();
-    agentResultView.showResponse(response);
-    showReview(false, file.name);
     let fingerprint = file === chosenFile ? chosenFingerprint : null;
     try {
       fingerprint ??= await fileFingerprint(file);
     } catch (error) {
       console.error("도면 구분값 계산 실패:", error instanceof Error ? error.name : typeof error);
     }
-    const saved = analysisHistory.save({ fileName: file.name, fingerprint, response });
-    $("#agent-result-progress").textContent = saved
-      ? "②의 응답을 표시하고 이 브라우저에 저장했어요. 처음으로 돌아가도 다시 열 수 있어요."
-      : "②의 응답을 표시했어요. 저장 공간이 부족해 결과를 저장하지 못했어요.";
-    renderHistory();
-    if (file === chosenFile) checkSavedMatch(file);
+    const saved = analysisHistory.save({ fileName: file.name, fingerprint, response: analysisResponse });
+    if (saved) {
+      renderHistory();
+      await checkSavedMatch(file);
+    }
+    if (hostedMode) {
+      $("#read-progress").textContent = "③ 연결 보안 확인 중이에요…";
+      const challenge = await requestHostedChallenge(agentController.signal);
+      hostedTokens = await getHostedStudioToken("reviewer", challenge, { signal: agentController.signal });
+    }
+    const reviewResponse = await reviewDrawingWithStudio(file, {
+      analysisResult: analysisResponse,
+      hostedAccess: hostedTokens,
+      signal: agentController.signal,
+      onProgress: reportProgress,
+    });
+    stopProgress(true);
+    agentResultView.reset();
+    agentResultView.showResponse(reviewResponse, analysisResponse);
+    const reviewSaved = saved && analysisHistory.saveReview(saved.id, reviewResponse);
+    if (reviewSaved) {
+      renderHistory();
+      if (file === chosenFile) await checkSavedMatch(file);
+    }
+    showReview(false, file.name);
+    $("#agent-result-progress").textContent =
+      `검토를 마쳤어요.${saved && reviewSaved
+        ? " 결과를 이 브라우저에 저장했어요."
+        : saved
+          ? " 결과를 저장하지 못했어요."
+          : " 결과를 브라우저에 저장하지 못했어요."} 원본 도면과 직접 비교해 주세요.`;
   } catch (error) {
     stopProgress(false);
-    if (error instanceof StudioConnectionError) {
+    if (analysisResponse != null) {
+      agentResultView.reset();
+      showReview(false, file.name);
+      $("#agent-result-progress").textContent = "② 분석은 끝났지만 ③ 검토는 완료되지 않았어요. ②의 분석 내용은 화면에 표시하지 않아요.";
+      $("#read-error").textContent = error instanceof StudioConnectionError
+        ? `③ 검토를 완료하지 못했어요. ${error.message}`
+        : error instanceof AgentResultError
+          ? "③ 검토 응답을 읽지 못했어요. 다시 시도해 주세요."
+          : hostedMode && error instanceof Error
+            ? `③ 검토 연결 확인을 완료하지 못했어요. ${error.message}`
+          : "③ 검토 결과를 표시하지 못했어요. 다시 시도해 주세요.";
+    } else if (error instanceof StudioConnectionError) {
+      $("#read-error").textContent = error.message;
+    } else if (hostedMode && error instanceof Error) {
       $("#read-error").textContent = error.message;
     } else if (error instanceof AgentResultError) {
       $("#read-error").textContent = "②의 결과 형식을 읽을 수 없어요. 잠시 후 다시 시도해 주세요.";
@@ -600,6 +800,7 @@ agentStartButton.addEventListener("click", async () => {
     }
   } finally {
     agentController = null;
+    reviewerConsent.checked = false;
     $("#read-progress").textContent = "";
     setBusy(false);
   }
@@ -610,15 +811,16 @@ cancelAgentButton.addEventListener("click", () => {
   $("#read-progress").textContent = "기다리기를 중단하는 중이에요…";
   agentController.abort();
 });
-$("#open-saved-match").addEventListener("click", (event) => openSaved(event.currentTarget.dataset.id));
+$("#open-saved-match").addEventListener("click", (event) => openSaved(event.currentTarget.dataset.id, "review"));
 $("#download-references").addEventListener("click", downloadReferences);
 $("#clear-history").addEventListener("click", () => {
-  if (busy || !window.confirm("저장된 ② 분석 결과를 모두 삭제할까요? 되돌릴 수 없어요.")) return;
+  if (busy || !window.confirm("저장된 분석·검토 결과를 모두 삭제할까요? 되돌릴 수 없어요.")) return;
   analysisHistory.clear();
   hideSavedMatch();
   renderHistory();
 });
 renderHistory();
+await configureHostedConnection();
 const revealObserver = new IntersectionObserver((entries) => {
   entries.forEach((entry) => {
     if (!entry.isIntersecting) return;
