@@ -34,6 +34,41 @@ let fileToken = 0;
 const number = (value) => new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 3 }).format(value);
 const point = (value) => `(${number(value.x)}, ${number(value.y)})`;
 
+let progressValue = 0;
+let progressTimer = null;
+function setProgressPercent(percent) {
+  progressValue = Math.max(progressValue, Math.min(100, Math.round(percent)));
+  $("#progress-percent").textContent = `${progressValue}%`;
+  $("#progress-fill").style.width = `${progressValue}%`;
+  $("#progress-track").setAttribute("aria-valuenow", String(progressValue));
+}
+function startProgress(estimated) {
+  clearInterval(progressTimer);
+  progressValue = 0;
+  setProgressPercent(0);
+  $("#progress-box").hidden = false;
+  $("#progress-note").hidden = !estimated;
+  if (estimated) {
+    // 서버 소요 시간을 알 수 없어 90%까지 천천히 다가가게 한다.
+    progressTimer = setInterval(() => setProgressPercent(progressValue + (90 - progressValue) * 0.04), 1000);
+  }
+}
+function stopProgress(done) {
+  clearInterval(progressTimer);
+  if (done) setProgressPercent(100);
+  setTimeout(() => { if (!busy) $("#progress-box").hidden = true; }, done ? 600 : 0);
+}
+function reportProgress(message) {
+  $("#progress-label").textContent = message;
+  $("#read-progress").textContent = "";
+  const pages = /(\d+)\/(\d+)페이지/.exec(message);
+  if (pages) return setProgressPercent(((Number(pages[1]) - 0.5) / Number(pages[2])) * 95);
+  if (message.includes("보내는")) setProgressPercent(20);
+  else if (message.includes("분석하고")) setProgressPercent(30);
+  else if (message.includes("연결하는")) setProgressPercent(12);
+  else if (message.includes("확인하는")) setProgressPercent(5);
+}
+
 function setBusy(value, kind = null) {
   busy = value;
   $("#upload-screen").setAttribute("aria-busy", String(value));
@@ -391,6 +426,84 @@ function renderPreview(elements, page) {
   const height = Math.max(maxY - minY, 1);
   const padding = Math.max(width, height) * 0.05;
   preview.setAttribute("viewBox", `${minX - padding} ${minY - padding} ${width + padding * 2} ${height + padding * 2}`);
+  renderFeedback(elements, flip, Math.max(width, height));
+}
+
+const MAX_FEEDBACK = 20;
+
+function flagReason(element) {
+  const name = { line: "선", circle: "원", text: "글자" }[element.kind];
+  if (element.source === "ocr") {
+    return [`글자 “${element.text}”를 확인해 주세요`, `사진 속 글자를 글자 인식(OCR)으로 추정했어요(신뢰도 ${Math.round(element.confidence)}%). 원본 도면의 글자와 같은지 비교해 주세요.`];
+  }
+  if (element.source === "image") {
+    return [`${name} 후보를 확인해 주세요`, `이미지에서 찾은 ${name}이라 실제 도면과 다를 수 있어요. 원본에 같은 ${name}이 있는지 확인해 주세요.`];
+  }
+  return [`${name}의 위치·내용을 확인해 주세요`, `읽은 값이 불확실해요. 원본 도면과 비교해 맞는지 확인해 주세요.`];
+}
+
+function markerPosition(element, flip) {
+  if (element.kind === "line") {
+    return { x: (element.start.x + element.end.x) / 2, y: flip * (element.start.y + element.end.y) / 2 };
+  }
+  if (element.kind === "circle") return { x: element.center.x, y: flip * element.center.y };
+  return { x: element.position.x, y: flip * element.position.y };
+}
+
+function renderFeedback(elements, flip, extent) {
+  const flagged = elements.filter((element) => element.uncertain || element.source === "ocr" || element.source === "image");
+  const shown = flagged.slice(0, MAX_FEEDBACK);
+  const radius = extent * 0.014;
+  const svgNs = "http://www.w3.org/2000/svg";
+  const items = shown.map((element, index) => {
+    const { x, y } = markerPosition(element, flip);
+    const marker = document.createElementNS(svgNs, "g");
+    marker.setAttribute("class", "marker");
+    const dot = document.createElementNS(svgNs, "circle");
+    dot.setAttribute("cx", x);
+    dot.setAttribute("cy", y);
+    dot.setAttribute("r", radius);
+    const label = document.createElementNS(svgNs, "text");
+    label.setAttribute("x", x);
+    label.setAttribute("y", y);
+    label.setAttribute("font-size", radius * 1.2);
+    label.textContent = String(index + 1);
+    marker.append(dot, label);
+    preview.append(marker);
+
+    const [title, detail] = flagReason(element);
+    const item = document.createElement("li");
+    const badge = document.createElement("span");
+    badge.className = "badge";
+    badge.textContent = String(index + 1);
+    const body = document.createElement("div");
+    const strong = document.createElement("strong");
+    strong.textContent = title;
+    const paragraph = document.createElement("p");
+    paragraph.textContent = detail;
+    body.append(strong, paragraph);
+    item.append(badge, body);
+    const activate = () => {
+      $("#feedback-list").querySelectorAll("li.active").forEach((node) => node.classList.remove("active"));
+      preview.querySelectorAll(".marker.active").forEach((node) => node.classList.remove("active"));
+      item.classList.add("active");
+      marker.classList.add("active");
+    };
+    item.addEventListener("click", activate);
+    marker.addEventListener("click", () => { activate(); item.scrollIntoView({ block: "nearest", behavior: "smooth" }); });
+    marker.style.cursor = "pointer";
+    return item;
+  });
+  $("#feedback-list").replaceChildren(...items);
+  $("#feedback-notes").replaceChildren(...result.warnings.map((message) => {
+    const note = document.createElement("li");
+    note.textContent = message;
+    return note;
+  }));
+  $("#feedback-empty").hidden = Boolean(items.length || result.warnings.length);
+  $("#feedback-more").textContent = flagged.length > shown.length
+    ? `이 페이지에는 확인이 필요한 곳이 ${flagged.length}개 더 있어요. 앞의 ${shown.length}개만 표시해요. 전체는 ‘읽어낸 선·원·글자 자세히 보기’의 표에서 확인하세요.`
+    : "";
 }
 
 $("#select-button").addEventListener("click", () => fileInput.click());
@@ -422,7 +535,8 @@ startButton.addEventListener("click", async () => {
   if (!chosenFile || busy) return;
   setBusy(true, "local");
   $("#read-error").textContent = "";
-  $("#read-progress").textContent = "파일 읽는 중…";
+  startProgress(false);
+  reportProgress("파일 읽는 중…");
   result = null;
   list.replaceChildren();
   preview.replaceChildren();
@@ -432,10 +546,12 @@ startButton.addEventListener("click", async () => {
     if (!buffer.byteLength) throw new Error("빈 파일이에요. 내용이 있는 DXF 또는 PDF를 선택해 주세요.");
     result = chosenFile.name.toLowerCase().endsWith(".dxf")
       ? readDxf(buffer)
-      : await readPdf(buffer, (message) => { $("#read-progress").textContent = message; });
+      : await readPdf(buffer, reportProgress);
     renderResult();
     showReview(true);
+    stopProgress(true);
   } catch (error) {
+    stopProgress(false);
     result = null;
     console.error("도면 읽기 실패:", error);
     $("#read-error").textContent = `읽지 못했어요. ${error.message}`;
@@ -450,11 +566,13 @@ agentStartButton.addEventListener("click", async () => {
   agentController = new AbortController();
   setBusy(true, "agent");
   $("#read-error").textContent = "";
+  startProgress(true);
   try {
     const response = await analyzeDrawingWithStudio(file, {
       signal: agentController.signal,
-      onProgress: (message) => { $("#read-progress").textContent = message; },
+      onProgress: reportProgress,
     });
+    stopProgress(true);
     agentResultView.reset();
     agentResultView.showResponse(response);
     showReview(false, file.name);
@@ -471,6 +589,7 @@ agentStartButton.addEventListener("click", async () => {
     renderHistory();
     if (file === chosenFile) checkSavedMatch(file);
   } catch (error) {
+    stopProgress(false);
     if (error instanceof StudioConnectionError) {
       $("#read-error").textContent = error.message;
     } else if (error instanceof AgentResultError) {
@@ -500,6 +619,32 @@ $("#clear-history").addEventListener("click", () => {
   renderHistory();
 });
 renderHistory();
+const revealObserver = new IntersectionObserver((entries) => {
+  entries.forEach((entry) => {
+    if (!entry.isIntersecting) return;
+    entry.target.classList.add("visible");
+    revealObserver.unobserve(entry.target);
+  });
+}, { threshold: 0.15 });
+document.querySelectorAll(".intro-section, .intro-bottom").forEach((el) => {
+  el.classList.add("reveal");
+  revealObserver.observe(el);
+});
+function showIntro() {
+  if (busy) return;
+  $("#review-screen").hidden = true;
+  $("#upload-screen").hidden = true;
+  $("#intro-screen").hidden = false;
+  window.scrollTo({ top: 0 });
+}
+function showUpload() {
+  $("#intro-screen").hidden = true;
+  $("#upload-screen").hidden = false;
+  window.scrollTo({ top: 0 });
+}
+$("#brand-home").addEventListener("click", showIntro);
+$("#start-intro").addEventListener("click", showUpload);
+$("#start-intro-bottom").addEventListener("click", showUpload);
 $("#back-button").addEventListener("click", () => {
   $("#review-screen").hidden = true;
   $("#upload-screen").hidden = false;
