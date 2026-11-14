@@ -235,10 +235,9 @@ function hasSelectableTextInBox(texts, box, scale) {
   });
 }
 
-export async function readPdf(buffer, onProgress = () => {}) {
-  const { getDocument, OPS } = await loadLibrary();
+function openDocument(getDocument, buffer) {
   const assetUrl = (directory) => new URL(`../vendor/pdfjs/${directory}/`, import.meta.url).href;
-  const task = getDocument({
+  return getDocument({
     data: new Uint8Array(buffer),
     cMapUrl: assetUrl("cmaps"),
     cMapPacked: true,
@@ -250,6 +249,32 @@ export async function readPdf(buffer, onProgress = () => {}) {
     stopAtErrors: true,
     enableXfa: false,
   });
+}
+
+// 원본 PDF는 바꾸지 않고, 요청한 페이지만 화면 표시용 그림(canvas)으로 그립니다.
+export async function renderPdfPages(buffer, pageNumbers, maxWidth = 1000) {
+  const { getDocument } = await loadLibrary();
+  const task = openDocument(getDocument, buffer);
+  try {
+    const document = await task.promise;
+    const rendered = [];
+    for (const number of pageNumbers) {
+      if (!Number.isInteger(number) || number < 1 || number > document.numPages) continue;
+      const page = await document.getPage(number);
+      const viewport = page.getViewport({ scale: 1 });
+      const scale = Math.min(2, maxWidth / viewport.width);
+      const { canvas } = await renderPageToCanvas(page, viewport, scale);
+      rendered.push({ pageNumber: number, canvas, width: viewport.width, height: viewport.height });
+    }
+    return rendered;
+  } finally {
+    await task.destroy();
+  }
+}
+
+export async function readPdf(buffer, onProgress = () => {}) {
+  const { getDocument, OPS } = await loadLibrary();
+  const task = openDocument(getDocument, buffer);
   let ocrWorker = null;
   try {
     const document = await task.promise;

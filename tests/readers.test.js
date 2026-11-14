@@ -17,6 +17,7 @@ import { getNetlifyConfig } from "../netlify/edge-functions/studio-config.js";
 import { config as netlifyStudioTokenConfig, handleNetlifyStudioToken } from "../netlify/edge-functions/studio-token.js";
 import { createAnalysisHistory, fileFingerprint } from "../src/analysis-history.js";
 import { buildReferenceExamples } from "../src/reference-examples.js";
+import { buildFeedbackMarkers, pageMatches } from "../src/feedback-markers.js";
 
 const TEST_HISTORY_KEY = "blueprint-analysis-history-test";
 localStorage.removeItem(TEST_HISTORY_KEY);
@@ -311,7 +312,7 @@ test("이름만 PDF인 손상 파일은 쉬운 오류 안내", async () => {
 async function waitFor(condition, message, timeout = 20000) {
   const start = Date.now();
   while (!condition()) {
-    if (Date.now() - start > timeout) throw new Error(message);
+    if (Date.now() - start > timeout) throw new Error(typeof message === "function" ? message() : message);
     await new Promise((resolve) => setTimeout(resolve, 30));
   }
 }
@@ -1131,6 +1132,114 @@ agentTest("화면: ② 분석 뒤 요청할 때 ③ 피드백을 받고 상세 �
     assert(!consent.checked, "처리가 끝나면 전송 동의를 초기화해야 해요.");
     assert(app.querySelector("#agent-result-progress").textContent.includes("피드백을 받았고"));
     assert(app.querySelector("#history-panel").textContent.includes("simple.pdf"), "② 결과 이력은 유지해야 해요.");
+  } finally {
+    frame.contentWindow.fetch = originalFetch;
+    if (!app.querySelector("#review-screen").hidden) app.querySelector("#back-button").click();
+  }
+});
+
+function markerFixtures() {
+  const analysis = {
+    pages: [
+      { page_number: 1, width: 300, height: 240, coordinate_unit: "pt", coordinate_origin: "왼쪽 위", views: [] },
+      { page_number: 2, width: 300, height: 240, coordinate_unit: "pt", coordinate_origin: "왼쪽 아래", views: [] },
+      { page_number: 3, width: 300, height: 240, coordinate_unit: "pt", coordinate_origin: "가운데", views: [] },
+    ],
+    elements: [
+      { id: "E01", page_number: 1, location: { coordinate_unit: "pt", x: 80, y: 30, bbox: [20, 20, 140, 40] } },
+      { id: "E02", page_number: 2, location: { coordinate_unit: "pt", x: 150, y: 60, bbox: null } },
+      { id: "E03", page_number: 1, location: { description: "축 길이 옆", x: null, y: null, bbox: null } },
+      { id: "E04", page_number: 1, location: { coordinate_unit: "px", x: 10, y: 10 } },
+      { id: "E05", page_number: 3, location: { coordinate_unit: "pt", x: 10, y: 10 } },
+      { id: "E06", page_number: 1, location: { coordinate_unit: "pt", x: 900, y: 10 } },
+    ],
+  };
+  const finding = (id, classification, ids) => ({ id, classification, analysis_item_ids: ids });
+  const review = { findings: [
+    finding("R01", "틀림", ["E01"]),
+    finding("R02", "확인 필요", ["E02"]),
+    finding("R03", "확인 필요", ["E03"]),
+    finding("R04", "틀림", ["E04"]),
+    finding("R05", "확인 필요", ["E05"]),
+    finding("R06", "확인 필요", ["E06"]),
+    finding("R07", "확인 필요", ["E99"]),
+  ] };
+  return { analysis, review };
+}
+
+agentTest("도면 위 표시: 좌표가 확실한 피드백만 페이지별 빨강·노랑 동그라미로 계산", async () => {
+  const { analysis, review } = markerFixtures();
+  const before = JSON.stringify(analysis);
+  const markers = buildFeedbackMarkers(review, analysis);
+  assert(JSON.stringify(analysis) === before, "② 결과를 바꾸면 안 돼요.");
+  assert(markers.map((marker) => marker.number).join() === "1,2,3,4,5,6,7");
+  assert(markers[0].color === "red" && markers[0].symbol === "!", "틀림은 빨강·! 이어야 해요.");
+  assert(markers[1].color === "yellow" && markers[1].symbol === "?", "확인 필요는 노랑·? 이어야 해요.");
+  const first = markers[0].placements[0];
+  assert(first.page === 1 && Math.abs(first.x - 80 / 300) < 1e-9 && Math.abs(first.y - 30 / 240) < 1e-9, JSON.stringify(first));
+  assert(first.radius > 0.2 && first.radius < 0.3, `범위를 감싸는 반지름이어야 해요: ${first.radius}`);
+  const second = markers[1].placements[0];
+  assert(second.page === 2 && Math.abs(second.y - (1 - 60 / 240)) < 1e-9, "왼쪽 아래 기준 좌표는 위아래를 뒤집어야 해요.");
+  for (const [index, text] of [[2, "좌표가 없어요"], [3, "좌표 단위"], [4, "좌표 기준점"], [5, "페이지 밖"], [6, "찾지 못했어요"]]) {
+    assert(!markers[index].placements.length && markers[index].reason.includes(text), `${index + 1}번: ${markers[index].reason}`);
+  }
+  assert(buildFeedbackMarkers(review, null).every((marker) => !marker.placements.length && marker.reason));
+  assert(pageMatches(first, { width: 300, height: 240 }) && !pageMatches(first, { width: 240, height: 300 }));
+});
+
+agentTest("화면: ③ 피드백 동그라미를 해당 페이지 도면 위에 그리고 카드와 서로 강조", async () => {
+  if (!app) await openApp();
+  await selectFile("simple.pdf");
+  const { analysis: positions } = markerFixtures();
+  const analysis = JSON.parse(await agentFixture());
+  analysis.pages = positions.pages.slice(0, 2).map((page) => ({ ...page, views: analysis.pages[0]?.views ?? [] }));
+  // simple.pdf 2페이지는 회전·잘라내기 때문에 화면 크기가 200×280pt예요.
+  Object.assign(analysis.pages[1], { width: 200, height: 280 });
+  for (const element of analysis.elements) {
+    const position = positions.elements.find((item) => item.id === element.id);
+    if (element.id === "E01" || element.id === "E02") {
+      element.page_number = position.page_number;
+      element.location = { ...element.location, ...position.location };
+    }
+  }
+  const review = JSON.parse(new TextDecoder().decode(await fixture("reviewer-result-v2.json")));
+  review.findings = ["E01", "E02", "E03"].map((id, index) => ({
+    ...review.findings[0],
+    id: `R0${index + 1}`,
+    classification: index === 0 ? "틀림" : "확인 필요",
+    issue_type: index === 0 ? "표기 불일치" : "연결 불확실",
+    analysis_item_ids: [id],
+  }));
+  const mock = studioMock({ activityPages: [
+    { activities: [
+      { id: "analysis-answer", type: "message", replyToId: "sent-1", text: `\`\`\`json\n${JSON.stringify(analysis)}\n\`\`\`` },
+      { type: "event", name: "turn.complete", replyToId: "sent-1" },
+    ] },
+    { activities: [
+      { id: "review-answer", type: "message", replyToId: "sent-2", text: `\`\`\`json\n${JSON.stringify(review)}\n\`\`\`` },
+      { type: "event", name: "turn.complete", replyToId: "sent-2" },
+    ] },
+  ] });
+  const originalFetch = frame.contentWindow.fetch;
+  frame.contentWindow.fetch = mock.fetchImpl;
+  try {
+    app.querySelector("#reviewer-consent").click();
+    app.querySelector("#agent-start-button").click();
+    await waitFor(() => app.querySelector("#upload-screen").getAttribute("aria-busy") === "false", "② 분석이 끝나지 않았어요.");
+    app.querySelector("#feedback-start-button").click();
+    await waitFor(() => app.querySelectorAll(".feedback-marker").length === 2, () => `동그라미가 그려지지 않았어요. ${app.querySelector("#review-drawing-status").textContent} ${app.querySelector("#agent-result-error").textContent} ${[...app.querySelectorAll(".finding-location-note")].map((n) => n.textContent).join(" / ")}`);
+    const pages = [...app.querySelectorAll(".review-drawing-page figcaption")].map((node) => node.textContent);
+    assert(pages.join() === "1페이지,2페이지", pages.join());
+    const [red, yellow] = app.querySelectorAll(".feedback-marker");
+    assert(red.classList.contains("red") && red.textContent === "1!" && red.closest(".review-drawing-page").textContent.includes("1페이지"));
+    assert(yellow.classList.contains("yellow") && yellow.textContent === "2?" && yellow.closest(".review-drawing-page").textContent.includes("2페이지"));
+    const cards = app.querySelectorAll("#review-agent-findings .review-finding");
+    assert(cards[2].textContent.includes("위치 확인 필요") && !cards[2].querySelector(".finding-locate"));
+    assert(cards[0].textContent.includes("도면 표시: 1페이지"));
+    red.click();
+    assert(cards[0].classList.contains("linked") && red.classList.contains("linked") && !yellow.classList.contains("linked"));
+    cards[1].click();
+    assert(cards[1].classList.contains("linked") && yellow.classList.contains("linked") && !cards[0].classList.contains("linked"));
   } finally {
     frame.contentWindow.fetch = originalFetch;
     if (!app.querySelector("#review-screen").hidden) app.querySelector("#back-button").click();

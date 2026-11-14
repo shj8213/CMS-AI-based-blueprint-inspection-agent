@@ -5,6 +5,7 @@ import {
   displayValue,
   parseAgentResult,
 } from "./agent-result.js";
+import { buildFeedbackMarkers, pageMatches } from "./feedback-markers.js";
 
 const PAGE_SIZE = 50;
 const $ = (selector) => document.querySelector(selector);
@@ -158,16 +159,127 @@ function renderReviewList(container, records, emptyMessage, renderRecord) {
   for (const record of records) container.append(renderRecord(record));
 }
 
+function highlightFinding(findingId, { scrollTo }) {
+  for (const node of document.querySelectorAll(".review-finding.linked, .feedback-marker.linked")) {
+    node.classList.remove("linked");
+  }
+  const card = document.querySelector(`.review-finding[data-finding-number="${findingId}"]`);
+  const markers = [...document.querySelectorAll(`.feedback-marker[data-finding-number="${findingId}"]`)];
+  card?.classList.add("linked");
+  for (const marker of markers) {
+    marker.classList.add("linked");
+    marker.setAttribute("aria-pressed", "true");
+  }
+  for (const marker of document.querySelectorAll(".feedback-marker:not(.linked)")) {
+    marker.setAttribute("aria-pressed", "false");
+  }
+  const target = scrollTo === "card" ? card : markers[0];
+  if (target) {
+    target.scrollIntoView?.({ block: "center", behavior: "smooth" });
+    if (scrollTo === "card") target.focus({ preventScroll: true });
+  }
+}
+
+function setLocationNote(markerInfo, text, missing) {
+  const note = document.querySelector(`.review-finding[data-finding-number="${markerInfo.number}"] .finding-location-note`);
+  if (!note) return;
+  note.textContent = text;
+  note.classList.toggle("missing", missing);
+}
+
+async function renderFeedbackDrawing(markers, file, isCurrent) {
+  const section = $("#review-drawing");
+  const area = $("#review-drawing-pages");
+  const status = $("#review-drawing-status");
+  area.replaceChildren();
+  section.hidden = false;
+  const placed = markers.filter((marker) => marker.placements.length);
+  if (!placed.length) {
+    status.textContent = "위치 정보가 있는 피드백이 없어 도면 위에 표시하지 않았어요. 카드의 위치 설명을 보고 원본 도면에서 찾아 주세요.";
+    return;
+  }
+  if (!file) {
+    status.textContent = "원본 PDF가 없어 도면 그림을 보여 줄 수 없어요. 저장된 결과라면 같은 PDF를 첫 화면에서 고른 뒤 다시 열어 주세요.";
+    return;
+  }
+  status.textContent = "도면 그림을 준비하는 중이에요…";
+  const pageNumbers = [...new Set(placed.flatMap((marker) => marker.placements.map((item) => item.page)))]
+    .sort((a, b) => a - b);
+  let pages;
+  try {
+    const { renderPdfPages } = await import("./pdf.js");
+    pages = await renderPdfPages(await file.arrayBuffer(), pageNumbers);
+  } catch (error) {
+    if (!isCurrent()) return;
+    console.error("도면 그림 표시 실패:", error instanceof Error ? error.name : typeof error);
+    status.textContent = "도면 그림을 그리지 못했어요. 카드의 위치 설명을 보고 원본 도면에서 찾아 주세요.";
+    return;
+  }
+  if (!isCurrent()) return;
+
+  const drawn = new Set();
+  for (const page of pages) {
+    const figure = document.createElement("figure");
+    figure.className = "review-drawing-page";
+    const caption = document.createElement("figcaption");
+    caption.textContent = `${page.pageNumber}페이지`;
+    const frame = document.createElement("div");
+    frame.className = "review-drawing-frame";
+    page.canvas.setAttribute("role", "img");
+    page.canvas.setAttribute("aria-label", `${page.pageNumber}페이지 도면 그림`);
+    frame.append(page.canvas);
+    for (const marker of placed) {
+      for (const placement of marker.placements) {
+        if (placement.page !== page.pageNumber || !pageMatches(placement, page)) continue;
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `feedback-marker ${marker.color}`;
+        button.dataset.findingNumber = String(marker.number);
+        button.style.left = `${placement.x * 100}%`;
+        button.style.top = `${placement.y * 100}%`;
+        button.style.width = `${placement.radius * 200}%`;
+        button.setAttribute("aria-pressed", "false");
+        button.setAttribute("aria-label", `${marker.number}번 ${marker.label} 피드백 (${marker.findingId}) 카드 보기`);
+        const label = document.createElement("span");
+        label.className = "feedback-marker-label";
+        label.textContent = `${marker.number}${marker.symbol}`;
+        button.append(label);
+        button.addEventListener("click", () => highlightFinding(String(marker.number), { scrollTo: "card" }));
+        frame.append(button);
+        drawn.add(marker.number);
+      }
+    }
+    figure.append(caption, frame);
+    area.append(figure);
+  }
+
+  for (const marker of markers) {
+    if (drawn.has(marker.number)) {
+      const pagesText = [...new Set(marker.placements.map((item) => item.page))].join(", ");
+      setLocationNote(marker, `도면 표시: ${pagesText}페이지의 ${marker.number}${marker.symbol} 동그라미`, false);
+    } else if (marker.placements.length) {
+      setLocationNote(marker, "위치 확인 필요 · 원본 PDF의 페이지 크기가 ② 결과와 달라 표시하지 않았어요.", true);
+      const button = document.querySelector(`.review-finding[data-finding-number="${marker.number}"] .finding-locate`);
+      button?.remove();
+    }
+  }
+  status.textContent = drawn.size
+    ? "동그라미는 ②가 기록한 좌표로 그린 참고 표시예요. 빨강(!)은 틀림, 노랑(?)은 확인 필요예요. 원본 도면과 직접 비교해 주세요."
+    : "② 결과의 페이지 크기가 원본 PDF와 달라 동그라미를 그리지 않았어요.";
+}
+
 function renderReviewResult(data, responseSummary, message, analysisText) {
   $("#agent-result-title").textContent = "③ 도면 검토 결과";
   $("#result-title").textContent = "③ 도면 검토 결과";
   const analysisDetails = $("#analysis-result-details");
   analysisDetails.hidden = true;
   $("#agent-result-output").hidden = true;
+  let analysisData = null;
   if (analysisText) {
     try {
       const analysis = parseAgentResult(analysisText);
       if (analysis.data.schema_version !== "2.0") {
+        analysisData = analysis.data;
         renderResult(createAgentResultModel(analysis));
         analysisDetails.hidden = false;
         analysisDetails.open = false;
@@ -200,17 +312,47 @@ function renderReviewResult(data, responseSummary, message, analysisText) {
     "요약이 없어요. 아래 지적과 남은 한계를 확인해 주세요.",
   );
 
+  const markers = buildFeedbackMarkers(data, analysisData);
   $("#review-agent-finding-count").textContent = `(${data.findings.length}개)`;
   renderReviewList(
     $("#review-agent-findings"),
     data.findings,
     "기록된 지적이 없어요. 원본 도면과 직접 비교해 주세요.",
     (finding) => {
+      const marker = markers[data.findings.indexOf(finding)];
       const card = document.createElement("article");
-      card.className = "review-finding";
+      card.className = `review-finding ${marker.color}`;
+      card.dataset.findingNumber = String(marker.number);
+      card.tabIndex = -1;
       const heading = document.createElement("h4");
-      heading.textContent = `${finding.classification} · ${finding.issue_type} · ${finding.id}`;
+      const badge = document.createElement("span");
+      badge.className = `finding-badge ${marker.color}`;
+      badge.textContent = `${marker.number}${marker.symbol}`;
+      badge.setAttribute("aria-label", `${marker.number}번 ${marker.label}`);
+      heading.append(badge, document.createTextNode(` ${finding.classification} · ${finding.issue_type} · ${finding.id}`));
       card.append(heading);
+      const note = document.createElement("p");
+      note.className = "finding-location-note";
+      if (marker.placements.length) {
+        note.textContent = "도면 그림 위 위치를 준비하는 중이에요.";
+        const locate = document.createElement("button");
+        locate.type = "button";
+        locate.className = "select-button finding-locate";
+        locate.textContent = "도면에서 위치 보기";
+        locate.addEventListener("click", (event) => {
+          event.stopPropagation();
+          highlightFinding(String(marker.number), { scrollTo: "marker" });
+        });
+        card.append(note, locate);
+        card.addEventListener("click", (event) => {
+          if (event.target.closest("button") || window.getSelection?.().toString()) return;
+          highlightFinding(String(marker.number), { scrollTo: "marker" });
+        });
+      } else {
+        note.textContent = `위치 확인 필요 · ${marker.reason}`;
+        note.classList.add("missing");
+        card.append(note);
+      }
       addReviewField(card, "② 항목 ID", finding.analysis_item_ids.join(", "), "없음");
       addReviewField(card, "위치", finding.location);
       addReviewField(card, "무엇이 문제인지", finding.what);
@@ -259,9 +401,12 @@ function renderReviewResult(data, responseSummary, message, analysisText) {
       return item;
     },
   );
-  return message.includes("직접")
-    ? "직접 입력한 ③ 검토 결과를 표시했어요."
-    : "③ 검토 응답을 표시했어요.";
+  return {
+    markers,
+    message: message.includes("직접")
+      ? "직접 입력한 ③ 검토 결과를 표시했어요."
+      : "③ 검토 응답을 표시했어요.",
+  };
 }
 
 function renderResult(model) {
@@ -373,11 +518,25 @@ export function createAgentResultView() {
   const error = $("#agent-result-error");
   const progress = $("#agent-result-progress");
   let generation = 0;
+  let drawingGeneration = 0;
 
-  function showResult(text, message, analysisText) {
+  function clearDrawing() {
+    drawingGeneration += 1;
+    $("#review-drawing").hidden = true;
+    $("#review-drawing-pages").replaceChildren();
+    $("#review-drawing-status").textContent = "";
+  }
+
+  function showResult(text, message, analysisText, file = null) {
+    clearDrawing();
     const parsed = parseAgentResult(text);
     if (parsed.data.schema_version === "2.0") {
-      progress.textContent = renderReviewResult(parsed.data, parsed.summary, message, analysisText);
+      const result = renderReviewResult(parsed.data, parsed.summary, message, analysisText);
+      progress.textContent = result.message;
+      if (result.markers.length) {
+        const token = drawingGeneration;
+        renderFeedbackDrawing(result.markers, file, () => token === drawingGeneration);
+      }
       return;
     }
     renderResult(createAgentResultModel(parsed));
@@ -438,15 +597,16 @@ export function createAgentResultView() {
   });
 
   return {
-    showResponse(text, analysisText = null) {
+    showResponse(text, analysisText = null, file = null) {
       error.textContent = "";
-      showResult(text, "②의 응답을 표시했어요.", analysisText);
+      showResult(text, "②의 응답을 표시했어요.", analysisText, file);
     },
     openManual() {
       $("#agent-manual").open = true;
     },
     reset() {
       generation += 1;
+      clearDrawing();
       for (const details of panel.querySelectorAll("details")) details.open = false;
       input.value = "";
       input.disabled = false;

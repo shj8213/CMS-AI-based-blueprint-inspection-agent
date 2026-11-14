@@ -367,7 +367,9 @@ function openSaved(id, resultType = "analysis") {
   const analysisResponse = resultType === "review" && entry.kind !== "review" ? entry.response : null;
   try {
     agentResultView.reset();
-    agentResultView.showResponse(response, analysisResponse);
+    const drawingFile = resultType === "review" && chosenFile?.name.toLowerCase().endsWith(".pdf")
+      && entry.fingerprint && chosenFingerprint === entry.fingerprint ? chosenFile : null;
+    agentResultView.showResponse(response, analysisResponse, drawingFile);
   } catch (error) {
     agentResultView.reset();
     if (resultType === "analysis") {
@@ -879,7 +881,7 @@ async function requestFeedback(file = activeAnalysisFile) {
         $("#agent-result-progress").textContent = message;
       },
     });
-    agentResultView.showResponse(reviewResponse, activeAnalysisEntry.response);
+    agentResultView.showResponse(reviewResponse, activeAnalysisEntry.response, file);
     const reviewSaved = activeAnalysisEntry.id
       && analysisHistory.saveReview(activeAnalysisEntry.id, reviewResponse);
     if (reviewSaved) {
