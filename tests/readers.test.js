@@ -2065,6 +2065,16 @@ test("코드 점검: 맞게 그린 기준 도면과 단순 PDF에서는 잘못 �
   const simple = await codeReviewOf("simple.pdf");
   assert(!simple.review.findings.length && simple.review.summary.includes("문제가 없다는 뜻은 아니에요"));
 });
+test("코드 점검: 기능사 양식 연습 도면(기준 오탐 0건, 비교본은 현재 규칙으로 3개 중 길이 합계만 찾음)", async () => {
+  const reference = await codeReviewOf("shaft-exam-style-reference.pdf");
+  assert(!reference.review.findings.length, JSON.stringify(reference.review.findings.map((finding) => finding.what)));
+  assert(reference.review.not_missing.some((item) => item.reason.includes("= 118")), "맞는 합계 118을 확인된 정보로 남겨야 해요.");
+  const { review, text } = await codeReviewOf("shaft-exam-style-challenge.pdf");
+  // 단면 키홈 폭(8N9 vs 그린 폭 6)과 없는 데이텀 C 참조는 아직 코드 규칙이 없어 찾지 못해요(정답표 참고).
+  assert(review.findings.length === 1 && review.findings[0].classification === "틀림", JSON.stringify(review.findings.map((finding) => finding.what)));
+  const [chain] = review.findings;
+  assert(chain.what.includes("120") && chain.what.includes("118") && text(chain.analysis_item_ids[0]) === "120", chain.what);
+});
 test("코드 점검: 지름 기호가 여러 번 나와 연결이 불확실하면 확인 필요로 남김", () => {
   const text = (id, raw, x, y) => ({ id, page_number: 1, category: "기타문자", raw_text: raw, location: { bbox: [x, y, x + raw.length * 6, y + 10] } });
   const review = reviewCodeReadAnalysis({ pages: [{ page_number: 1 }], elements: [
