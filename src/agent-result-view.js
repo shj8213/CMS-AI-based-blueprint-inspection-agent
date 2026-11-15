@@ -152,6 +152,23 @@ function renderQuestion(question) {
   const answer = document.createElement("p");
   answer.className = "finding-question-answer";
   answer.textContent = "아직 답하지 않았어요.";
+  const guide = document.createElement("div");
+  guide.className = "finding-question-guide";
+  guide.hidden = true;
+  const renderGuidance = (lines) => {
+    guide.replaceChildren();
+    guide.hidden = !Array.isArray(lines) || !lines.length;
+    if (guide.hidden) return;
+    const title = document.createElement("strong");
+    title.textContent = "이렇게 정해요";
+    const list = document.createElement("ul");
+    for (const line of lines) {
+      const item = document.createElement("li");
+      item.textContent = String(line);
+      list.append(item);
+    }
+    guide.append(title, list);
+  };
   for (const choice of question.choices) {
     const button = document.createElement("button");
     button.type = "button";
@@ -162,10 +179,11 @@ function renderQuestion(question) {
       event.stopPropagation();
       for (const other of choices.querySelectorAll("button")) other.setAttribute("aria-pressed", String(other === button));
       answer.textContent = `답변: ${choice} (이 화면에만 기록돼요)`;
+      renderGuidance(question.guidance?.[choice]);
     });
     choices.append(button);
   }
-  box.append(text, choices, answer);
+  box.append(text, choices, answer, guide);
   return box;
 }
 
@@ -529,6 +547,34 @@ async function renderFeedbackDrawing(review, analysis, coordinateMarkers, file, 
   }
 }
 
+// 지적마다 '맞아요/아니에요'를 남기는 버튼이에요. 학습 기록이 있는 ③ 결과에서만 보여요.
+let verdictHandler = null;
+
+function renderVerdict(finding) {
+  const row = document.createElement("div");
+  row.className = "finding-verdict";
+  const label = document.createElement("span");
+  label.textContent = "이 지적이 맞나요?";
+  row.append(label);
+  const buttons = [["맞음", "맞아요"], ["아님", "아니에요"]].map(([verdict, text]) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "select-button";
+    button.textContent = text;
+    button.setAttribute("aria-pressed", "false");
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (!verdictHandler(finding.id, verdict)) return;
+      const nowOn = button.getAttribute("aria-pressed") !== "true";
+      for (const other of buttons) other.setAttribute("aria-pressed", "false");
+      button.setAttribute("aria-pressed", String(nowOn));
+    });
+    row.append(button);
+    return button;
+  });
+  return row;
+}
+
 function renderReviewResult(data, responseSummary, message, analysisText) {
   $("#agent-result-title").textContent = "③ 도면 검토 결과";
   $("#result-title").textContent = "③ 도면 검토 결과";
@@ -637,6 +683,7 @@ function renderReviewResult(data, responseSummary, message, analysisText) {
       addReviewField(more, "판단 근거·신뢰도", `${finding.confidence} · ${finding.confidence_reason}`);
       addReviewField(more, "다음 확인", finding.next_check, "더 확인할 내용 없음");
       card.append(more);
+      if (verdictHandler && finding.id) card.append(renderVerdict(finding));
       return card;
     },
   );
@@ -867,7 +914,8 @@ export function createAgentResultView() {
   });
 
   return {
-    showResponse(text, analysisText = null, file = null) {
+    showResponse(text, analysisText = null, file = null, { onVerdict = null } = {}) {
+      verdictHandler = onVerdict;
       error.textContent = "";
       showResult(text, "②의 응답을 표시했어요.", analysisText, file);
     },

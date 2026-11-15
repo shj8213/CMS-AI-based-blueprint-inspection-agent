@@ -1,3 +1,4 @@
+import { partGuidance, roughnessAdvice } from "./part-guidance.js";
 // PDF 코드 읽기 자료(② 형식 1.1)에서 도면 안의 숫자끼리 서로 맞는지 코드로 바로 점검해요.
 // 결과는 ③ 검토 결과(2.0)와 같은 모양이라 같은 화면·동그라미 표시를 그대로 써요.
 // 규칙은 도면 종류와 상관없이 쓸 수 있는 일반 규칙만 두고, 연결이 확실하지 않으면 '확인 필요'로 남겨요.
@@ -132,32 +133,16 @@ function checkChainSums(texts, lines) {
       });
       continue;
     }
-    // 도면 축척으로 각 치수선의 그려진 길이를 재서, 적힌 숫자와 다른 치수가 딱 하나면 그 치수를 범인으로 가리켜요.
-    const scale = drawingScale(dimensions);
-    const drawnOf = (dimension) => Math.round(((dimension.x1 - dimension.x0) / scale) * 10) / 10;
-    const odd = scale
-      ? [total, ...chain].filter((dimension) => Math.abs(drawnOf(dimension) - dimension.value) > Math.max(0.5, dimension.value * 0.03))
-      : [];
-    const culprit = odd.length === 1 ? odd[0] : null;
-    const culpritNote = culprit
-      ? ` · 그려진 길이로 재면 ${culprit === total ? "전체 치수" : "직렬 치수"} ${culprit.text.text} 부분은 약 ${format(drawnOf(culprit))}(mm)로 그려져 있어요`
-      : "";
     findings.push({
       classification: "틀림",
-      analysis_item_ids: culprit && culprit !== total ? [culprit.text.id, total.text.id] : [total.text.id],
-      location: where((culprit ?? total).text),
-      what: `전체 치수 ${total.text.text} ≠ 직렬 치수 합계 ${format(sum)}${culpritNote}`,
-      why: `${parts} = ${format(sum)}인데 전체는 ${total.text.text}예요.`,
-      evidence: `전체 치수선과 직렬 치수선의 양 끝 좌표가 같아요(x ${Math.round(total.x0)}~${Math.round(total.x1)}).${culprit
-        ? ` 치수선 길이 ${format(culprit.x1 - culprit.x0)}pt ÷ 축척 ${format(scale)}pt/mm(가로 치수들로 계산) ≈ ${format(drawnOf(culprit))}`
-        : ""}`,
+      analysis_item_ids: [total.text.id],
+      location: where(total.text),
+      what: `전체 치수 ${total.text.text} ≠ 직렬 치수 합계 ${format(sum)}`,
+      why: `${parts} = ${format(sum)}인데 전체는 ${total.text.text}예요. 구간 치수를 모두 더하면 전체 길이와 같아야 만드는 사람이 길이를 하나로 읽을 수 있어요.`,
+      evidence: `전체 치수선과 직렬 치수선의 양 끝 좌표가 같아요(x ${Math.round(total.x0)}~${Math.round(total.x1)}).`,
       confidence: "높음",
-      confidence_reason: `치수선 끝 좌표가 서로 정확히 이어지고 숫자도 파일에 저장된 값이라 계산 결과가 분명해요.${culprit
-        ? " 어느 치수가 틀렸는지는 그려진 길이로 추정한 것이라, 축척을 무시하고 그린 부분이면 다를 수 있어요."
-        : ""}`,
-      how_to_resolve: culprit
-        ? `${culprit.text.text} 치수(그려진 길이 약 ${format(drawnOf(culprit))})부터 확인해 고쳐 주세요.`
-        : "전체 치수나 직렬 치수 중 틀린 쪽을 고쳐 주세요.",
+      confidence_reason: "치수선 끝 좌표가 서로 정확히 이어지고 숫자도 파일에 저장된 값이라 계산 결과가 분명해요. 어느 치수가 틀렸는지는 정하지 않았어요.",
+      how_to_resolve: "구간 치수를 하나씩 원본과 비교해 합이 전체 길이가 되도록 틀린 숫자를 고쳐 주세요. 어느 쪽이 틀렸는지는 설계 의도를 아는 사람이 정해요.",
       next_check: "원본 도면에서 전체 치수와 직렬 치수가 같은 두 끝을 잇는지 확인해 주세요.",
     });
   }
@@ -219,7 +204,7 @@ function checkFitSizes(rows) {
       confidence_reason: certain
         ? "숫자는 파일 값 그대로지만, 주석과 치수가 같은 부위라는 판단은 기호가 한 번씩만 나온다는 점에 기대요."
         : "같은 기호가 여러 번 나와 어느 것끼리 같은 부위인지 알 수 없어요.",
-      how_to_resolve: "치수와 주석 중 틀린 쪽을 고쳐 주세요.",
+      how_to_resolve: "같은 부위의 지름은 치수와 주석에서 하나의 값이어야 해요. 어느 쪽이 맞는지 확인해 틀린 쪽을 고쳐 주세요.",
       next_check: `원본 도면에서 ${fit} 주석이 가리키는 부위의 지름을 확인해 주세요.`,
     });
   }
@@ -254,7 +239,7 @@ function checkKeywayWidths(rows) {
     confidence_reason: certain
       ? "글자 값은 파일 그대로지만, 같은 키홈이라는 판단은 단면 표시가 하나라는 점에 기대요."
       : "키홈이 여러 개일 수 있어요.",
-    how_to_resolve: "폭을 하나로 맞춰 주세요.",
+    how_to_resolve: "같은 키홈이라면 폭은 하나의 값이어야 해요. 키 규격에 맞는 폭으로 맞춰 주세요.",
     next_check: "원본 도면의 키홈 단면 치수와 주석을 함께 확인해 주세요.",
   }];
 }
@@ -320,11 +305,11 @@ function checkDrawnKeyWidths(texts, elements, dimensions) {
       analysis_item_ids: [text.id, pair[0].id, pair[1].id],
       location: where(text),
       what: `키홈 폭: 글자 ${text.text} ≠ 그려진 폭 약 ${format(drawn)}`,
-      why: "같은 치수의 보조선 두 개 사이 거리를 도면 축척으로 재면 적힌 폭과 달라요.",
+      why: "같은 치수의 보조선 두 개 사이 거리를 도면 축척으로 재면 적힌 폭과 달라요. 키홈은 키가 꼭 맞게 들어가야 해서 숫자와 그림이 같아야 해요.",
       evidence: `글자 "${text.text}", 보조선 간격 ${format(pair[1].x - pair[0].x)}pt, 축척 ${format(scale)}pt/mm(가로 치수들로 계산)`,
       confidence: "중간",
       confidence_reason: "N9·P9가 붙은 숫자를 키홈 폭으로, 글자 바로 아래 같은 높이의 세로선 두 개를 그 보조선으로 봤어요. 축척을 무시하고(NS) 그린 부분이면 틀릴 수 있어요.",
-      how_to_resolve: "적힌 폭과 그림 중 틀린 쪽을 고쳐 주세요(키 규격에 맞는 값인지도 확인).",
+      how_to_resolve: "키홈 폭 숫자와 그려진 홈의 폭은 같아야 해요. 키 규격(키 폭)에 맞는 값을 기준으로 틀린 쪽을 고쳐 주세요.",
       next_check: "단면도에서 키홈 폭 치수와 그려진 홈 폭을 확인해 주세요.",
     });
   }
@@ -427,6 +412,7 @@ function askFittedParts(rows) {
       question: {
         text: `${group.label} 구간에 들어가는 부품은 무엇인가요?`,
         choices: PART_QUESTION_CHOICES,
+        guidance: Object.fromEntries(PART_QUESTION_CHOICES.map((choice) => [choice, partGuidance(choice, group.fit)])),
       },
     }));
 }
@@ -500,7 +486,7 @@ function compareWithSheet(sheet, texts, rows, dimensions, findings) {
         evidence: `문제지 "${item.text}", 도면 ${same.map((entry) => `"${entry.row.text}"`).join(", ")}`,
         confidence: "중간",
         confidence_reason: "지름 숫자가 같은 구간끼리 비교했어요. 같은 지름 구간이 여러 개면 다른 구간일 수도 있어요.",
-        how_to_resolve: "문제지에 맞게 끼워맞춤 기호를 고쳐 주세요.",
+        how_to_resolve: `문제지의 ${item.fit}로 고쳐 주세요. 끼워맞춤 기호의 소문자(h, k 등)는 축, 대문자(H 등)는 구멍을 뜻하고, 문자와 숫자가 부품이 얼마나 꽉 끼는지를 정해요.`,
         next_check: "문제지 조립도에서 이 구간의 부품을 확인해 주세요.",
       });
       // 부품은 문제지로 알았으니 같은 구간 질문은 다시 하지 않아요.
@@ -521,11 +507,11 @@ function compareWithSheet(sheet, texts, rows, dimensions, findings) {
           analysis_item_ids: plain.flatMap((row) => row.pieces.map((piece) => piece.id)).slice(0, 3),
           location: where(plain[0].pieces[0]),
           what: `Ø${format(item.size)} 구간: 문제지에는 ${item.fit}(${item.part})인데 도면에 끼워맞춤 기호가 없어요.`,
-          why: "부품이 끼워지는 자리는 보통 끼워맞춤 공차가 필요해요.",
+          why: "부품이 끼워지는 자리는 보통 끼워맞춤 공차가 있어야 헐겁거나 너무 꽉 끼지 않아요.",
           evidence: `문제지 "${item.text}", 도면 ${plain.map((row) => `"${row.text}"`).join(", ")}`,
           confidence: "낮음",
           confidence_reason: "같은 지름 숫자를 찾았지만 같은 구간인지는 코드로 확정하지 못해요.",
-          how_to_resolve: "필요하면 끼워맞춤 기호를 넣어 주세요.",
+          how_to_resolve: `이 자리가 부품이 끼워지는 면이면 문제지의 ${item.fit}처럼 끼워맞춤 기호를 지름 치수에 붙여 주세요. 축은 소문자, 구멍은 대문자를 써요.`,
           next_check: "도면의 이 지름 치수가 문제지의 부품 자리인지 확인해 주세요.",
         });
       } else {
@@ -544,7 +530,7 @@ function compareWithSheet(sheet, texts, rows, dimensions, findings) {
         evidence: `문제지 "${item.text}"`,
         confidence: "낮음",
         confidence_reason: "글자로만 찾았어요. 치수가 그림·다른 표기로 들어갔을 수 있어요.",
-        how_to_resolve: "빠졌다면 지름 치수를 넣어 주세요.",
+        how_to_resolve: "도면에 그 구간의 지름 치수가 없다면 넣어 주세요. 지름 치수가 있어야 부품이 들어가는 자리의 크기를 알 수 있어요.",
         next_check: "원본 도면에서 이 지름 치수를 찾아 주세요.",
       });
     }
@@ -577,11 +563,11 @@ function compareWithSheet(sheet, texts, rows, dimensions, findings) {
         analysis_item_ids: wrong.flatMap((entry) => entry.ids),
         location: where(wrong[0].row.pieces[0]),
         what: `키홈 폭: 문제지 ${format(sheet.keywayWidth)} ≠ 도면 ${wrong.map((entry) => entry.row.text).join(", ")}`,
-        why: "문제지 조립 정보의 키홈 폭과 도면 표기가 달라요.",
+        why: "문제지 조립 정보의 키홈 폭과 도면 표기가 달라요. 키홈 폭은 같이 쓰는 키의 폭과 맞아야 해요.",
         evidence: `문제지 "키홈 폭 ${format(sheet.keywayWidth)}", 도면 ${wrong.map((entry) => `"${entry.row.text}"`).join(", ")}`,
         confidence: "중간",
         confidence_reason: "'키홈' 글자나 N9·P9가 붙은 숫자를 키홈 폭으로 봤어요.",
-        how_to_resolve: "문제지에 맞게 키홈 폭을 고쳐 주세요.",
+        how_to_resolve: "키 규격에서 키 폭을 확인하고, 키홈 폭을 문제지와 같은 값으로 고쳐 주세요.",
         next_check: "단면도의 키홈 폭 치수를 확인해 주세요.",
       });
     } else if (widths.length) {
@@ -611,7 +597,7 @@ function compareWithSheet(sheet, texts, rows, dimensions, findings) {
           evidence: `문제지 "축 전체 길이 ${format(sheet.totalLength)}", 도면 "${longest.text.text}"`,
           confidence: "중간",
           confidence_reason: "직렬 치수로 이어진 가장 긴 가로 치수를 축 전체 길이로 봤어요.",
-          how_to_resolve: "문제지에 맞게 전체 길이를 고쳐 주세요.",
+          how_to_resolve: "문제지의 전체 길이로 맞추고, 구간 치수의 합도 다시 확인해 주세요.",
           next_check: "전체 길이 치수를 확인해 주세요.",
         });
       }
@@ -662,11 +648,11 @@ function checkSheetFeatures(sheet, texts, dimensions) {
         what: other
           ? `키홈 깊이: 문제지 ${format(sheet.keywayDepth)} ≠ 도면 ${other.text}`
           : `키홈 깊이: 문제지의 ${format(sheet.keywayDepth)}을 단면 키홈 근처에서 찾지 못했어요.`,
-        why: "문제지 조립 정보의 키홈 깊이와 단면의 깊이 치수가 달라요.",
+        why: "문제지 조립 정보의 키홈 깊이와 단면의 깊이 치수가 달라요. 깊이가 다르면 키가 홈에 맞지 않거나 헐거워져요.",
         evidence: `문제지 "키홈 깊이 ${format(sheet.keywayDepth)}", 도면 ${other ? `"${other.text}"` : "근처 숫자 없음"}(키홈 폭 ${keyText.text} 글자 주변 약 25mm 안)`,
         confidence: other ? "중간" : "낮음",
         confidence_reason: "키홈 폭 글자 가까이의 숫자를 깊이 치수로 봤어요. 다른 숫자가 근처에 있으면 틀릴 수 있어요.",
-        how_to_resolve: "문제지에 맞게 키홈 깊이를 고쳐 주세요.",
+        how_to_resolve: "단면도의 키홈 깊이 치수를 문제지 값으로 고쳐 주세요. 깊이가 축 기준인지 허브 기준인지도 함께 확인하세요.",
         next_check: "단면도의 깊이 치수를 확인해 주세요.",
       });
     }
@@ -693,7 +679,7 @@ function checkSheetFeatures(sheet, texts, dimensions) {
         evidence: `문제지 "${sheet.geometric}", 도면에 0.0xx 형태의 글자 없음`,
         confidence: "낮음",
         confidence_reason: "공차 값을 글자(0.011 등)로만 찾아요. 그림이나 다른 표기면 놓칠 수 있어요.",
-        how_to_resolve: "필요한 기하공차 기호와 값을 넣어 주세요.",
+        how_to_resolve: "문제지가 요구한 부위(예: 풀리 자리 원주 흔들림)에 공차 기호와 값을 넣어 주세요. 기하공차는 모양·흔들림이 얼마나 허용되는지를 정해요.",
         next_check: "원본 도면에서 기하공차 틀(공차 기호·값·데이텀)이 있는지 확인해 주세요.",
       });
     }
@@ -743,18 +729,19 @@ function checkSheetRoughness(sheet, texts, rows, dimensions) {
         });
         continue;
       }
+      const advice = roughnessAdvice(item.part);
       result.extra.push({
         classification: "확인 필요",
         issue_type: "누락",
         basis: SHEET_BASIS,
-        analysis_item_ids: [piece.id, span.text.id],
+        analysis_item_ids: [piece.id],
         location: where(piece),
         what: `${label} 구간(${item.part}): 표면 거칠기 기호를 찾지 못했어요.`,
-        why: "문제지에서 부품이 끼워지는 자리인데, 이 구간 가까이에 w·x·y·z 거칠기 기호가 없어요.",
+        why: `문제지에서 ${item.part}이(가) 닿는 자리인데, 이 구간 가까이에 w·x·y·z 거칠기 기호가 없어요. ${advice.why}`,
         evidence: `문제지 "${item.text}", 도면 "${piece.text}" 구간(가로 치수 ${span.text.text}) 위아래 약 25mm 안에 거칠기 글자 없음`,
         confidence: "중간",
         confidence_reason: "거칠기 기호를 w·x·y·z 한 글자로만 찾아요. 그림 기호만 그렸거나 멀리 떨어져 있으면 놓칠 수 있어요.",
-        how_to_resolve: "부품이 끼워지는 면이면 알맞은 표면 거칠기 기호를 넣어 주세요.",
+        how_to_resolve: advice.how,
         next_check: "원본 도면에서 이 구간 표면에 거칠기 기호가 있는지 확인해 주세요.",
       });
     }
@@ -801,7 +788,7 @@ export function reviewCodeReadAnalysis(analysis, { problemSheet = null } = {}) {
     findings,
     not_missing: [...chain.passed, ...drawnKeys.passed, ...datums.passed, ...(sheet?.passed ?? []), ...(sheet?.roughness.passed ?? [])],
     limitations: [
-      "코드 점검은 5가지 규칙만 봐요: ① 가로 직렬 치수 합계와 전체 치수(틀리면 그려진 길이로 어느 치수가 다른지 추정), ② 같은 끼워맞춤 기호(예: k6)가 붙은 지름 치수와 주석, ③ 키홈 폭 주석끼리, ④ N9·P9 키홈 폭 글자와 그려진 폭(가로 치수로 구한 축척 사용), ⑤ 기하공차가 참조하는 데이텀이 도면에 있는지.",
+      "코드 점검은 5가지 규칙만 봐요: ① 가로 직렬 치수 합계와 전체 치수(틀리면 어느 치수가 틀렸는지는 정하지 않음), ② 같은 끼워맞춤 기호(예: k6)가 붙은 지름 치수와 주석, ③ 키홈 폭 주석끼리, ④ N9·P9 키홈 폭 글자와 그려진 폭(가로 치수로 구한 축척 사용), ⑤ 기하공차가 참조하는 데이텀이 도면에 있는지.",
       "세로 치수, 지시선이 가리키는 대상, 설계 의도, 규격(KS) 적합성은 코드로 보지 않아요. 필요하면 ‘피드백 받기’로 ③ 검토를 이어서 받으세요.",
       "같은 부위인지 확실하지 않으면 '확인 필요'(노랑)로 남겼어요. 결과는 사람이 원본 도면과 직접 비교해야 해요.",
       ...(problemSheet ? [`문제지(${problemSheet.fileName || "선택한 파일"})의 '조립 정보' 표 글자와도 대조했어요. 문제지에 적힌 부품 자리에는 w·x·y·z 표면 거칠기 글자가 근처에 있는지, 키홈 깊이와 기하공차 값 글자가 있는지도 봐요. 조립도 그림과 공차 값이 맞는지는 코드로 보지 않아요.`] : []),

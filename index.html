@@ -400,6 +400,8 @@
       .review-drawing-viewport.zoomed { overflow: auto; max-height: min(80vh, 900px); }
       .review-drawing-frame { position: relative; width: 100%; }
       .finding-more { margin-top: 6px; font-size: 13px; }
+      .finding-verdict { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; font-size: 13px; }
+      .finding-verdict .select-button[aria-pressed="true"] { background: #1f5fbf; color: #fff; }
       .finding-more summary { cursor: pointer; font-weight: 700; }
       .zoom-controls { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
       .marker-legend { display: grid; gap: 4px; margin: 0 0 12px; padding: 10px 12px; list-style: none; border-radius: 8px; background: #f4f6fb; font-size: 13px; color: #33415c; }
@@ -413,18 +415,20 @@
       .zoom-hint { font-size: 12px; color: #5b6b85; }
       .zoom-level { min-width: 48px; text-align: center; font-size: 13px; font-weight: 700; }
       .review-drawing-frame canvas { display: block; width: 100%; height: auto; }
-      .feedback-marker { position: absolute; aspect-ratio: 1; min-width: 22px; padding: 0; transform: translate(-50%, -50%); border: 3px solid; border-radius: 50%; background: transparent; cursor: pointer; }
+      .feedback-marker { position: absolute; aspect-ratio: 1; min-width: 22px; padding: 0; transform: translate(-50%, -50%); border: 2px solid; border-radius: 50%; background: transparent; cursor: pointer; opacity: .9; box-shadow: 0 0 0 1.5px rgba(255, 255, 255, .9), inset 0 0 0 1px rgba(255, 255, 255, .55); transition: opacity .15s, box-shadow .15s; }
       .feedback-marker.tone-red { border-color: #c62828; }
       .feedback-marker.tone-yellow { border-color: #e0b000; }
       .feedback-marker.tone-blue { border-color: #1c6dd0; }
-      .feedback-marker.candidate { border-style: dashed; }
-      .feedback-marker.linked { border-width: 5px; box-shadow: 0 0 0 4px rgba(31, 95, 191, .45); }
+      .feedback-marker.candidate { border-style: dashed; opacity: .75; }
+      .feedback-marker:hover { opacity: 1; }
+      .feedback-marker.linked { opacity: 1; border-width: 3px; box-shadow: 0 0 0 1.5px #fff, 0 0 0 5px rgba(31, 95, 191, .4); }
       .feedback-marker:focus-visible { outline: 3px solid #1f5fbf; outline-offset: 3px; }
       .feedback-marker.label-only { border-color: transparent; pointer-events: none; }
       .feedback-marker.label-only.linked { border-color: transparent; box-shadow: none; }
+      .feedback-marker.label-only { box-shadow: none; }
       .feedback-marker.label-only .feedback-marker-label { pointer-events: auto; cursor: pointer; }
       .feedback-marker.label-only.linked .feedback-marker-label { box-shadow: 0 0 0 3px rgba(31, 95, 191, .55); }
-      .feedback-marker-label { position: absolute; left: 100%; top: -6px; margin-left: 2px; padding: 0 5px; border-radius: 999px; font: 800 12px/18px sans-serif; white-space: nowrap; }
+      .feedback-marker-label { position: absolute; left: 100%; top: -6px; margin-left: 2px; padding: 0 6px; border-radius: 999px; font: 700 11px/17px sans-serif; white-space: nowrap; box-shadow: 0 0 0 1.5px #fff, 0 1px 3px rgba(0, 0, 0, .3); }
       .feedback-marker.tone-red .feedback-marker-label { background: #c62828; color: #fff; }
       .feedback-marker.tone-yellow .feedback-marker-label { background: #ffd43b; color: #2b2100; }
       .feedback-marker.tone-blue .feedback-marker-label { background: #1c6dd0; color: #fff; }
@@ -433,6 +437,8 @@
       .finding-question-choices { display: flex; flex-wrap: wrap; gap: 6px; }
       .finding-question-choices button[aria-pressed="true"] { background: #1c6dd0; color: #fff; border-color: #1c6dd0; }
       .finding-question-answer { margin: 6px 0 0; font-size: 0.9em; color: #33415c; }
+      .finding-question-guide { margin: 8px 0 0; padding: 8px; background: #fff; border-radius: 6px; font-size: 0.9em; }
+      .finding-question-guide ul { margin: 4px 0 0; padding-left: 18px; }
 
       @media (max-width: 740px) {
         .page { width: min(100% - 28px, 540px); }
@@ -663,7 +669,7 @@
           </section>
           <section class="card upload-panel agent-entry" id="memory-panel" aria-labelledby="memory-title" hidden>
             <h2 id="memory-title">검토 기억</h2>
-            <p class="privacy-note" id="memory-note">③ 검토가 끝나면 도면 종류·표기 모양·지적 요약만 이 브라우저에 저장해요(파일 이름·좌표는 제외, 표기 모양의 숫자는 가림). 지적 요약은 ③이 쓴 문장 그대로라 치수나 이름이 들어 있을 수 있어요. 이 브라우저를 쓰는 사람은 볼 수 있고, 동의해야만 다음 ③ 요청에 함께 보내요. 최근 20개까지 보관해요.</p>
+            <p class="privacy-note" id="memory-note">③ 검토가 끝나면 도면 종류·표기 모양·지적 요약(지적 카드에서 누른 ‘맞아요/아니에요’ 포함)만 이 브라우저에 저장해요(파일 이름·좌표는 제외, 표기 모양의 숫자는 가림). 지적 요약은 ③이 쓴 문장 그대로라 치수나 이름이 들어 있을 수 있어요. 이 브라우저를 쓰는 사람은 볼 수 있고, 동의해야만 다음 ③ 요청에 함께 보내요. 최근 20개까지 보관해요.</p>
             <div class="history-actions">
               <button class="select-button" id="clear-memory" type="button">검토 기억 모두 삭제 (0개)</button>
             </div>
@@ -726,10 +732,11 @@
                 <p class="privacy-note">문제지 PDF에 ‘조립 정보’ 표(예: <code>Ø20 k6 : 베어링 6204</code>, <code>키홈 폭 6</code>, <code>축 전체 길이 118</code>)가 있으면 홈페이지가 전송 없이 도면 글자와 대조해요. 문제지는 부품이 어디에 끼워지는지 알려 주는 참고 자료로만 써요. 저장되지 않고, 기능사 문제지는 저작권이 있으니 저장소·공개 사이트에 올리지 마세요.</p>
               </div>
               <div class="saved-match" id="memory-match" hidden>
-                <p><strong>비슷한 도면을 검토한 기록이 있어요.</strong> 이전 지적은 참고일 뿐이고, 이번 도면에서 다시 확인한 것만 결과에 남아요.</p>
+                <p id="memory-similar-note"><strong>비슷한 도면을 검토한 기록이 있어요.</strong> 이전 지적은 참고일 뿐이고, 이번 도면에서 다시 확인한 것만 결과에 남아요.</p>
+                <p id="memory-lessons-note"><strong>여러 도면에서 반복된 지적 유형이 있어요.</strong> 놓치기 쉬운 점으로만 알려 주고, 이번 도면에서 직접 확인한 것만 결과에 남아요.</p>
                 <label class="privacy-note" for="memory-consent">
                   <input id="memory-consent" type="checkbox">
-                  아래 이전 지적 요약을 Microsoft Copilot Studio의 ③ 요청에 함께 보내는 것에 동의합니다. 동의하지 않으면 보내지 않아요.
+                  아래 이전 지적 요약·반복 유형을 Microsoft Copilot Studio의 ③ 요청에 함께 보내는 것에 동의합니다. 동의하지 않으면 보내지 않아요.
                 </label>
                 <pre class="privacy-note" id="memory-preview"></pre>
               </div>
@@ -810,6 +817,7 @@
                   <li><span class="legend-dot tone-yellow"></span><strong>노랑 ?</strong> 코드가 확정을 못 했어요. 직접 봐 주세요.</li>
                   <li><span class="legend-dot tone-blue"></span><strong>파랑 ?</strong> 질문이에요. 답해 주면 더 정확해져요.</li>
                   <li><span class="legend-dot candidate"></span><strong>점선</strong> 정확한 자리 대신 후보 위치예요.</li>
+                  <li><strong>1′</strong> 같은 번호 뒤의 ′는 같은 지적의 다른 위치예요.</li>
                 </ul>
                 <div id="review-drawing-pages"></div>
               </section>
