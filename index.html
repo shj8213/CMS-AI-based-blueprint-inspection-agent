@@ -350,6 +350,7 @@
       .history-list .file-row .select-button { margin-left: auto; flex: 0 0 auto; }
       .history-list .remove-button { margin-left: 0; }
       .history-actions { margin-top: 10px; text-align: right; }
+      #memory-preview { white-space: pre-wrap; margin: 6px 0 0; }
       .verify-label { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; font-size: 14px; white-space: nowrap; }
       .reference-box { margin-top: 12px; padding: 12px; border: 1px solid #d8dee8; border-radius: 8px; }
       .reference-box p { margin: 0 0 8px; font-size: 15px; }
@@ -604,6 +605,13 @@
               <button class="select-button" id="clear-history" type="button">저장된 결과 모두 삭제</button>
             </div>
           </section>
+          <section class="card upload-panel agent-entry" id="memory-panel" aria-labelledby="memory-title" hidden>
+            <h2 id="memory-title">검토 기억</h2>
+            <p class="privacy-note" id="memory-note">③ 검토가 끝나면 도면 종류·표기 모양·지적 요약만 이 브라우저에 저장해요(파일 이름·좌표·치수 값은 제외). 이 브라우저를 쓰는 사람은 볼 수 있고, 동의해야만 다음 ③ 요청에 함께 보내요. 최근 20개까지 보관해요.</p>
+            <div class="history-actions">
+              <button class="select-button" id="clear-memory" type="button">검토 기억 모두 삭제 (0개)</button>
+            </div>
+          </section>
         </section>
 
         <section class="screen" id="review-screen" aria-labelledby="result-title" hidden>
@@ -648,6 +656,14 @@
             <p class="read-message error" id="agent-result-error" role="alert"></p>
             <div id="feedback-actions" hidden>
               <p class="privacy-note">피드백을 요청하면 원본 PDF와 ② 분석 결과가 Microsoft Copilot Studio의 ③으로 전송돼요.</p>
+              <div class="saved-match" id="memory-match" hidden>
+                <p><strong>비슷한 도면을 검토한 기록이 있어요.</strong> 이전 지적은 참고일 뿐이고, 이번 도면에서 다시 확인한 것만 결과에 남아요.</p>
+                <label class="privacy-note" for="memory-consent">
+                  <input id="memory-consent" type="checkbox">
+                  아래 이전 지적 요약을 Microsoft Copilot Studio의 ③ 요청에 함께 보내는 것에 동의합니다. 동의하지 않으면 보내지 않아요.
+                </label>
+                <pre class="privacy-note" id="memory-preview"></pre>
+              </div>
               <button class="start-button" id="feedback-start-button" type="button">피드백 받기</button>
               <input class="hidden-input" id="feedback-file-input" type="file" accept=".pdf,application/pdf" aria-label="저장된 분석과 함께 보낼 원본 PDF 선택">
               <button class="select-button" id="cancel-feedback" type="button" hidden>기다리기 중단</button>
