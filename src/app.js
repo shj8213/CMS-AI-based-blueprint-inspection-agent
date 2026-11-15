@@ -8,6 +8,7 @@ import {
   analyzeDrawingWithStudio,
   getHostedStudioConfig,
   getHostedStudioToken,
+  problemSheetType,
   reviewDrawingWithStudio,
   StudioConnectionError,
 } from "./studio-connection.js";
@@ -23,6 +24,8 @@ const analysisHistory = createAnalysisHistory({
 const savedTime = (value) => new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 const fileInput = $("#file-input");
 const feedbackFileInput = $("#feedback-file-input");
+const problemSheetInput = $("#problem-sheet-input");
+let problemSheetFile = null;
 const startButton = $("#start-button");
 const agentStartButton = $("#agent-start-button");
 const codeReadButton = $("#code-read-button");
@@ -209,6 +212,8 @@ function setBusy(value, kind = null) {
   cancelAgentButton.disabled = false;
   $("#feedback-start-button").disabled = value || !activeAnalysisEntry;
   feedbackFileInput.disabled = value;
+  problemSheetInput.disabled = value;
+  $("#problem-sheet-remove").disabled = value;
   $("#cancel-feedback").hidden = !value || kind !== "review";
   $("#cancel-feedback").disabled = false;
   for (const button of document.querySelectorAll("#history-panel button, #history-panel input, #open-saved-match")) button.disabled = value;
@@ -884,10 +889,10 @@ codeReadButton.addEventListener("click", async () => {
     stopProgress(true);
     showReview(false, file.name);
     updateFeedbackAction();
-    const wrong = codeReview.findings.filter((finding) => finding.classification === "틀림").length;
+    const count = (kind) => codeReview.findings.filter((finding) => finding.classification === kind).length;
     const seconds = ((performance.now() - started) / 1000).toFixed(1);
     $("#agent-result-progress").textContent =
-      `PDF를 코드로 읽고 점검했어요(${seconds}초, 틀림 ${wrong}건·확인 필요 ${codeReview.findings.length - wrong}건). `
+      `PDF를 코드로 읽고 점검했어요(${seconds}초, 틀림 ${count("틀림")}건·확인 필요 ${count("확인 필요")}건·질문 ${count("질문")}개). `
       + "더 자세한 검토는 ‘피드백 받기’(선택)."
       + (saved ? "" : " 브라우저에 저장하지는 못했어요.");
   } catch (error) {
@@ -946,6 +951,7 @@ async function requestFeedback(file = activeAnalysisFile) {
     let reviewResponse = await reviewDrawingWithStudio(file, {
       analysisResult: activeAnalysisEntry.response,
       analysisOrigin: isCodeReadResponse(activeAnalysisEntry.response) ? "code" : "agent",
+      problemSheet: problemSheetFile,
       hostedAccess: hostedTokens,
       signal: agentController.signal,
       onProgress: (message) => {
@@ -999,6 +1005,23 @@ async function requestFeedback(file = activeAnalysisFile) {
 }
 
 $("#feedback-start-button").addEventListener("click", () => requestFeedback());
+function setProblemSheet(file) {
+  problemSheetFile = file;
+  $("#problem-sheet-name").textContent = file ? file.name : "선택 안 함";
+  $("#problem-sheet-remove").hidden = !file;
+}
+problemSheetInput.addEventListener("change", () => {
+  const file = problemSheetInput.files?.[0] ?? null;
+  problemSheetInput.value = "";
+  if (!file) return;
+  if (!problemSheetType(file)) {
+    $("#agent-result-error").textContent = "문제지는 PDF·PNG·JPG 파일만 보낼 수 있어요.";
+    return;
+  }
+  $("#agent-result-error").textContent = "";
+  setProblemSheet(file);
+});
+$("#problem-sheet-remove").addEventListener("click", () => setProblemSheet(null));
 feedbackFileInput.addEventListener("change", async () => {
   const file = feedbackFileInput.files?.[0] ?? null;
   feedbackFileInput.value = "";

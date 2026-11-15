@@ -385,10 +385,12 @@
       .review-finding p { margin: 6px 0; overflow-wrap: anywhere; white-space: pre-wrap; }
       .review-finding.tone-red { border-left: 5px solid #c62828; }
       .review-finding.tone-yellow { border-left: 5px solid #e0b000; }
+      .review-finding.tone-blue { border-left: 5px solid #1c6dd0; }
       .review-finding.linked { outline: 3px solid #1f5fbf; outline-offset: 2px; background: #f2f7ff; }
       .finding-badge { display: inline-block; min-width: 28px; padding: 1px 6px; border-radius: 999px; text-align: center; font-weight: 800; }
       .finding-badge.tone-red { background: #c62828; color: #fff; }
       .finding-badge.tone-yellow { background: #ffd43b; color: #2b2100; }
+      .finding-badge.tone-blue { background: #1c6dd0; color: #fff; }
       .finding-location-note { color: #1f5fbf; font-weight: 700; }
       .finding-location-note.missing { color: #8a5a00; }
       .review-drawing-page { margin: 12px 0; }
@@ -407,12 +409,19 @@
       .feedback-marker { position: absolute; aspect-ratio: 1; min-width: 22px; padding: 0; transform: translate(-50%, -50%); border: 3px solid; border-radius: 50%; background: transparent; cursor: pointer; }
       .feedback-marker.tone-red { border-color: #c62828; }
       .feedback-marker.tone-yellow { border-color: #e0b000; }
+      .feedback-marker.tone-blue { border-color: #1c6dd0; }
       .feedback-marker.candidate { border-style: dashed; }
       .feedback-marker.linked { border-width: 5px; box-shadow: 0 0 0 4px rgba(31, 95, 191, .45); }
       .feedback-marker:focus-visible { outline: 3px solid #1f5fbf; outline-offset: 3px; }
       .feedback-marker-label { position: absolute; left: 100%; top: -6px; margin-left: 2px; padding: 0 5px; border-radius: 999px; font: 800 12px/18px sans-serif; white-space: nowrap; }
       .feedback-marker.tone-red .feedback-marker-label { background: #c62828; color: #fff; }
       .feedback-marker.tone-yellow .feedback-marker-label { background: #ffd43b; color: #2b2100; }
+      .feedback-marker.tone-blue .feedback-marker-label { background: #1c6dd0; color: #fff; }
+      .finding-question { margin: 8px 0; padding: 8px; background: #eef4fc; border-radius: 6px; }
+      .finding-question-text { margin: 0 0 6px; font-weight: 600; }
+      .finding-question-choices { display: flex; flex-wrap: wrap; gap: 6px; }
+      .finding-question-choices button[aria-pressed="true"] { background: #1c6dd0; color: #fff; border-color: #1c6dd0; }
+      .finding-question-answer { margin: 6px 0 0; font-size: 0.9em; color: #33415c; }
 
       @media (max-width: 740px) {
         .page { width: min(100% - 28px, 540px); }
@@ -473,6 +482,8 @@
       #upload-screen .start-button:hover:not(:disabled) { background: #e8590c; }
       #upload-screen .start-button:disabled { background: #ffd8a8; }
       #feedback-start-button { background: #f76707; }
+      .problem-sheet { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; }
+      .problem-sheet .privacy-note { flex-basis: 100%; margin: 0; }
       #feedback-start-button:hover:not(:disabled) { background: #e8590c; }
       #feedback-start-button:disabled { background: #ffd8a8; }
       #upload-screen .select-button:hover { background: #fff4e6; }
@@ -687,7 +698,14 @@
             </div>
             <p class="read-message error" id="agent-result-error" role="alert"></p>
             <div id="feedback-actions" hidden>
-              <p class="privacy-note">피드백을 요청하면 원본 PDF와 ② 분석 결과가 Microsoft Copilot Studio의 ③으로 전송돼요.</p>
+              <p class="privacy-note">피드백을 요청하면 원본 PDF와 ② 분석 결과(문제지를 고르면 문제지도)가 Microsoft Copilot Studio의 ③으로 전송돼요.</p>
+              <div class="problem-sheet" id="problem-sheet">
+                <label class="select-button" for="problem-sheet-input">문제지(조립도) 함께 보내기 (선택·초안)</label>
+                <input class="hidden-input" id="problem-sheet-input" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg">
+                <span id="problem-sheet-name">선택 안 함</span>
+                <button class="select-button" id="problem-sheet-remove" type="button" hidden>빼기</button>
+                <p class="privacy-note">문제지는 부품이 어디에 끼워지는지 알려 주는 참고 자료로만 써요. 저장되지 않고, 기능사 문제지는 저작권이 있으니 저장소·공개 사이트에 올리지 마세요.</p>
+              </div>
               <button class="start-button" id="feedback-start-button" type="button">피드백 받기</button>
               <input class="hidden-input" id="feedback-file-input" type="file" accept=".pdf,application/pdf" aria-label="저장된 분석과 함께 보낼 원본 PDF 선택">
               <button class="select-button" id="cancel-feedback" type="button" hidden>기다리기 중단</button>

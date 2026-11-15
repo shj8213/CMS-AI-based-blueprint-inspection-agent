@@ -239,6 +239,49 @@ function checkKeywayWidths(rows) {
   }];
 }
 
+// 끼워맞춤 공차가 붙은 지름 구간에 어떤 부품이 들어가는지 도면에 적혀 있지 않으면 사람에게 물어봐요.
+// 부품(베어링·오일실 등)을 추측해 판정하지 않고, '질문'으로만 남겨요.
+export const PART_QUESTION_CHOICES = ["베어링", "오일실", "기어·풀리", "없음", "모름"];
+const PART_WORDS = /베어링|오일\s*실|기어|풀리|커플링|스프로킷|bearing|seal/i;
+const MAX_QUESTIONS = 4;
+
+function askFittedParts(rows) {
+  const labeledFits = new Set();
+  const groups = new Map();
+  for (const row of rows) {
+    for (const match of row.text.matchAll(DIAMETER_FIT)) {
+      if (hasLabel(row) || PART_WORDS.test(row.text)) {
+        labeledFits.add(match[2]);
+        continue;
+      }
+      const label = `Ø${format(Number(match[1]))}${match[2]}`;
+      const group = groups.get(label) ?? { label, fit: match[2], items: [] };
+      group.items.push({ row, ids: idsAt(row, match) });
+      groups.set(label, group);
+    }
+  }
+  return [...groups.values()]
+    .filter((group) => !labeledFits.has(group.fit))
+    .slice(0, MAX_QUESTIONS)
+    .map((group) => ({
+      classification: "질문",
+      issue_type: "연결 불확실",
+      analysis_item_ids: group.items.flatMap((item) => item.ids).slice(0, 3),
+      location: where(group.items[0].row.pieces[0]),
+      what: `${group.label} 구간: 들어가는 부품이 도면에 없어요.`,
+      why: "끼워맞춤 공차가 있어 다른 부품이 끼워지는 자리로 보이지만, 무엇인지는 도면만으로 알 수 없어요.",
+      evidence: group.items.map((item) => `"${item.row.text}"`).join(", "),
+      confidence: "낮음",
+      confidence_reason: "부품 종류는 도면 글자에 없어서 코드가 정하지 않았어요.",
+      how_to_resolve: "아래 질문에 답하거나, 문제지(조립도)를 함께 보내 ③ 피드백을 받아 주세요.",
+      next_check: "문제지(조립도)에서 이 구간에 끼워지는 부품을 확인해 주세요.",
+      question: {
+        text: `${group.label} 구간에 들어가는 부품은 무엇인가요?`,
+        choices: PART_QUESTION_CHOICES,
+      },
+    }));
+}
+
 // ② 형식 1.1 자료(객체 또는 JSON 글)를 받아 ③ 검토 결과(2.0)와 같은 모양의 코드 점검 결과를 돌려줘요.
 export function reviewCodeReadAnalysis(analysis) {
   const data = typeof analysis === "string" ? JSON.parse(analysis) : analysis;
@@ -246,7 +289,7 @@ export function reviewCodeReadAnalysis(analysis) {
   const texts = readTexts(elements);
   const rows = joinRows(texts);
   const chain = checkChainSums(texts, readHorizontalLines(elements));
-  const raw = [...chain.findings, ...checkFitSizes(rows), ...checkKeywayWidths(rows)];
+  const raw = [...chain.findings, ...checkFitSizes(rows), ...checkKeywayWidths(rows), ...askFittedParts(rows)];
   const findings = raw.map((finding, index) => ({
     id: `${CODE_FINDING_PREFIX}${String(index + 1).padStart(2, "0")}`,
     issue_type: "표기 불일치",
@@ -255,14 +298,16 @@ export function reviewCodeReadAnalysis(analysis) {
     analysis_item_ids: [...new Set(finding.analysis_item_ids)].slice(0, 3),
   }));
   const wrong = findings.filter((finding) => finding.classification === "틀림").length;
+  const questions = findings.filter((finding) => finding.classification === "질문").length;
+  const checks = findings.length - wrong - questions;
   const pages = (data?.pages ?? []).map((page) => page.page_number).filter(Number.isInteger);
   return {
     schema_version: "2.0",
     status: "부분 완료",
     review_basis: CODE_REVIEW_BASIS,
-    summary: findings.length
-      ? `코드 점검에서 틀림 ${wrong}건, 확인 필요 ${findings.length - wrong}건을 찾았어요.`
-      : "코드 점검 규칙으로는 서로 어긋나는 숫자를 찾지 못했어요. 문제가 없다는 뜻은 아니에요.",
+    summary: wrong + checks
+      ? `코드 점검에서 틀림 ${wrong}건, 확인 필요 ${checks}건을 찾았어요.${questions ? ` 질문 ${questions}개가 있어요.` : ""}`
+      : `코드 점검 규칙으로는 서로 어긋나는 숫자를 찾지 못했어요. 문제가 없다는 뜻은 아니에요.${questions ? ` 질문 ${questions}개가 있어요.` : ""}`,
     reviewed_pages: pages,
     unreviewed_pages: [],
     findings,
@@ -271,6 +316,7 @@ export function reviewCodeReadAnalysis(analysis) {
       "코드 점검은 3가지 규칙만 봐요: ① 가로 직렬 치수 합계와 전체 치수, ② 같은 끼워맞춤 기호(예: k6)가 붙은 지름 치수와 주석, ③ 키홈 폭 주석끼리.",
       "세로 치수, 지시선이 가리키는 대상, 설계 의도, 규격(KS) 적합성은 코드로 보지 않아요. 필요하면 ‘피드백 받기’로 ③ 검토를 이어서 받으세요.",
       "같은 부위인지 확실하지 않으면 '확인 필요'(노랑)로 남겼어요. 결과는 사람이 원본 도면과 직접 비교해야 해요.",
+      "끼워맞춤 지름 구간에 들어가는 부품이 도면에 없으면 추측하지 않고 '질문'(파랑)으로 물어봐요. 답은 이 화면에만 기록되고 아직 추가 점검에는 쓰지 않아요.",
     ],
     human_review_status: "미확인",
   };
@@ -280,7 +326,9 @@ export function reviewCodeReadAnalysis(analysis) {
 export function mergeCodeReview(codeReview, studioReview) {
   const studio = typeof studioReview === "string" ? JSON.parse(studioReview) : studioReview;
   if (studio?.schema_version !== "2.0" || !Array.isArray(studio.findings) || !codeReview.findings.length) return studio;
-  const codeIds = new Set(codeReview.findings.flatMap((finding) => finding.analysis_item_ids));
+  const codeIds = new Set(codeReview.findings
+    .filter((finding) => finding.classification !== "질문")
+    .flatMap((finding) => finding.analysis_item_ids));
   const kept = studio.findings.filter((finding) => !(finding.analysis_item_ids ?? []).some((id) => codeIds.has(id)));
   const dropped = studio.findings.length - kept.length;
   return {

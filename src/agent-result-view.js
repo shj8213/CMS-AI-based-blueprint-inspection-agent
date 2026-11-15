@@ -140,6 +140,35 @@ function renderSummary(summary, selector = "#agent-summary", emptyMessage = "총
   container.replaceChildren(list);
 }
 
+// 질문 카드: 답은 화면에만 기록하고 저장하거나 다시 점검하지 않아요(초안).
+function renderQuestion(question) {
+  const box = document.createElement("div");
+  box.className = "finding-question";
+  const text = document.createElement("p");
+  text.className = "finding-question-text";
+  text.textContent = question.text;
+  const choices = document.createElement("div");
+  choices.className = "finding-question-choices";
+  const answer = document.createElement("p");
+  answer.className = "finding-question-answer";
+  answer.textContent = "아직 답하지 않았어요.";
+  for (const choice of question.choices) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "select-button";
+    button.textContent = choice;
+    button.setAttribute("aria-pressed", "false");
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      for (const other of choices.querySelectorAll("button")) other.setAttribute("aria-pressed", String(other === button));
+      answer.textContent = `답변: ${choice} (이 화면에만 기록돼요)`;
+    });
+    choices.append(button);
+  }
+  box.append(text, choices, answer);
+  return box;
+}
+
 function addReviewField(container, label, value, emptyText = "확인 필요") {
   const row = document.createElement("p");
   const name = document.createElement("strong");
@@ -380,7 +409,7 @@ async function renderFeedbackDrawing(review, analysis, coordinateMarkers, file, 
 
   finishNotes(markers, drawn, sizeMismatch);
   if (drawn.size) {
-    status.textContent = `${drawn.size}/${markers.length}개 표시 · 빨강(!) 틀림 · 노랑(?) 확인 필요 · 점선은 후보 위치`;
+    status.textContent = `${drawn.size}/${markers.length}개 표시 · 빨강(!) 틀림 · 노랑(?) 확인 필요 · 파랑(?) 질문 · 점선은 후보 위치`;
   } else if (sizeMismatch) {
     status.textContent = "② 결과의 페이지 크기가 원본 PDF와 달라 동그라미를 그리지 않았어요.";
   } else {
@@ -472,7 +501,11 @@ function renderReviewResult(data, responseSummary, message, analysisText) {
       });
       addReviewField(card, "문제", finding.what);
       addReviewField(card, "이유", finding.why);
-      addReviewField(card, "고칠 방법", finding.how_to_resolve);
+      if (finding.question) {
+        card.append(renderQuestion(finding.question));
+      } else {
+        addReviewField(card, "고칠 방법", finding.how_to_resolve);
+      }
       const more = document.createElement("details");
       more.className = "finding-more";
       const moreTitle = document.createElement("summary");

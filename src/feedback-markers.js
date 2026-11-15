@@ -5,6 +5,7 @@
 const MARKER_STYLES = {
   "틀림": { color: "tone-red", symbol: "!", label: "틀림" },
   "확인 필요": { color: "tone-yellow", symbol: "?", label: "확인 필요" },
+  "질문": { color: "tone-blue", symbol: "?", label: "질문" },
 };
 const MIN_RADIUS = 0.015;
 const POINT_RADIUS = 0.02;
