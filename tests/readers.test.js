@@ -5,6 +5,7 @@ import {
   buildPdfAgentResponse,
   DXF_REQUEST,
   findScanPages,
+  hasOutlinedText,
   isCodeReadResponse,
   PDF_CODE_READER,
 } from "../src/agent-input.js";
@@ -1284,6 +1285,21 @@ agentTest("도면 위 표시: 좌표가 확실한 피드백만 페이지별 빨�
   assert(pageMatches(first, { width: 300, height: 240 }) && !pageMatches(first, { width: 240, height: 300 }));
 });
 
+agentTest("도면 위 표시: 위치가 없는 지적은 글 속 x 좌표 범위로 세로 띠 후보를 계산", async () => {
+  const analysis = { pages: [{ page_number: 1, width: 842, height: 595 }], elements: [] };
+  const review = { findings: [
+    { id: "R01", classification: "확인 필요", analysis_item_ids: [], what: "왼쪽 상자 x≈283.4~285.8, 오른쪽 상자 x≈341.3~343.8" },
+    { id: "R02", classification: "틀림", analysis_item_ids: [], what: "좌표 없음" },
+    { id: "R03", classification: "틀림", analysis_item_ids: [], what: "x≈0~800처럼 너무 넓은 범위" },
+  ] };
+  const markers = buildFeedbackMarkers(review, analysis);
+  const bands = markers[0].placements;
+  assert(bands.length === 2 && bands.every((item) => item.band && item.candidate && item.page === 1), JSON.stringify(bands));
+  assert(Math.abs(bands[0].x - 284.6 / 842) < 1e-9 && bands[0].bandWidth > 2.4 / 842, JSON.stringify(bands[0]));
+  assert(!markers[1].placements.length && !markers[2].placements.length, "좌표가 없거나 너무 넓으면 그리지 않아야 해요.");
+  assert(mergeOverlappingMarkers(markers)[0].placements.every((item) => !item.hidden), "띠는 동그라미 합치기에서 빠져야 해요.");
+});
+
 agentTest("도면 위 표시: 한 피드백은 글자 위치 위주로 최대 3개만, 너무 큰 원은 그리지 않음", async () => {
   const page = { page_number: 1, width: 600, height: 400, coordinate_unit: "pt", coordinate_origin: "왼쪽 위" };
   const text = (id, x) => ({ id, page_number: 1, raw_text: String(x), location: { coordinate_unit: "pt", bbox: [x, 100, x + 12, 108] } });
@@ -2217,6 +2233,15 @@ test("PDF 코드 읽기: 벡터 PDF를 ② 형식으로 바꾸고 페이지 크�
   assert(placement?.source === "coordinate", `좌표로 동그라미를 그려야 해요: ${markers[0].reason}`);
   assert(placement.x > 20 / input.pages[0].width && placement.y < 50 / input.pages[0].height, JSON.stringify(placement));
   await rejects(() => buildPdfAgentInput({ format: "DXF", elements: [], warnings: [] }), "PDF");
+});
+test("PDF 코드 읽기: 선은 많고 글자가 거의 없으면 글자가 선으로 그려진 PDF로 경고", async () => {
+  const lines = Array.from({ length: 150 }, () => ({ kind: "line" }));
+  assert(hasOutlinedText({ elements: lines }), "선만 있으면 경고해야 해요.");
+  assert(!hasOutlinedText({ elements: [...lines, ...Array.from({ length: 5 }, () => ({ kind: "text" }))] }), "글자가 있으면 경고하지 않아요.");
+  assert(!hasOutlinedText({ elements: lines.slice(0, 20) }), "선이 적으면 경고하지 않아요.");
+  assert(!hasOutlinedText({ elements: lines.map((element) => ({ ...element, source: "image" })) }));
+  const simple = await readPdf(await fixture("simple.pdf"), () => {}, { scanImages: false });
+  assert(!hasOutlinedText(simple), "글자가 있는 PDF는 경고하지 않아요.");
 });
 test("PDF 코드 읽기: 스캔 PDF는 OCR 없이 스캔 페이지로 구분하고 변환을 거부", async () => {
   const result = await readPdf(await fixture("scan.pdf"), () => {}, { scanImages: false });

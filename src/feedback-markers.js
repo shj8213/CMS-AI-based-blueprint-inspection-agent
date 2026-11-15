@@ -182,6 +182,44 @@ function placeByText(element, pdfPages) {
   return { placements: found };
 }
 
+const MAX_BANDS = 3;
+const MAX_BAND_WIDTH = 0.3;
+const BAND_FIELDS = ["location", "what", "why", "basis", "how_to_resolve", "evidence", "next_check"];
+const BAND_PATTERN = /x\s*[≈~=:]?\s*(\d+(?:\.\d+)?)\s*[~∼-]\s*(\d+(?:\.\d+)?)/gi;
+
+// 위치를 못 찾은 지적의 글에 'x≈283.4~285.8'처럼 PDF 가로 좌표 범위가 있으면 세로 띠(후보)로 보여 줍니다. 세로 위치는 알 수 없어요.
+function bandPlacements(finding, pdfPages, analysis) {
+  const firstPdfPage = pdfPages ? [...pdfPages.values()][0] : null;
+  const firstAnalysisPage = (analysis?.pages ?? []).find((page) => Number.isInteger(page?.page_number)
+    && page.width > 0 && page.height > 0);
+  const page = firstPdfPage
+    ? { number: firstPdfPage.pageNumber, width: firstPdfPage.width, height: firstPdfPage.height }
+    : firstAnalysisPage ? { number: firstAnalysisPage.page_number, width: firstAnalysisPage.width, height: firstAnalysisPage.height }
+      : null;
+  if (!page || !(page.width > 0) || !(page.height > 0)) return [];
+  const text = BAND_FIELDS.map((field) => (typeof finding[field] === "string" ? finding[field] : "")).join("\n");
+  const ranges = [];
+  for (const match of text.matchAll(BAND_PATTERN)) {
+    const [from, to] = [Number(match[1]), Number(match[2])];
+    if (!(from < to) || to > page.width || (to - from) / page.width > MAX_BAND_WIDTH) continue;
+    if (ranges.some(([a, b]) => from <= b && to >= a)) continue;
+    ranges.push([from, to]);
+  }
+  return ranges.slice(0, MAX_BANDS).map(([from, to]) => ({
+    page: page.number,
+    x: (from + to) / 2 / page.width,
+    y: 0.5,
+    radius: MIN_RADIUS,
+    bandWidth: Math.max((to - from) / page.width + 0.01, 0.015),
+    band: true,
+    elementId: null,
+    pageWidth: page.width,
+    pageHeight: page.height,
+    source: "band",
+    candidate: true,
+  }));
+}
+
 // pdfPages: 페이지 번호 → { pageNumber, width, height, texts } (원본 PDF에서 읽은 글자 위치, 선택)
 export function buildFeedbackMarkers(review, analysis, pdfPages = null) {
   const elements = new Map();
@@ -220,6 +258,7 @@ export function buildFeedbackMarkers(review, analysis, pdfPages = null) {
     if (!finding.analysis_item_ids?.length) reasons.push("연결된 ② 항목이 없어요.");
     const tidy = tidyPlacements(placements);
     if (placements.length && !tidy.placements.length) reasons.push("가리키는 범위가 너무 넓어 동그라미를 그리지 않았어요.");
+    if (!tidy.placements.length) tidy.placements = bandPlacements(finding, pdfPages, analysis);
     return {
       findingId: finding.id,
       number: index + 1,
@@ -262,7 +301,8 @@ function enclose(a, b, ratio) {
 // 여러 피드백의 동그라미가 서로 겹치면 하나의 동그라미로 합치고 번호표만 위아래로 나란히 둡니다.
 // 합쳐진 동그라미는 가장 심각한 색(빨강 → 노랑 → 파랑) 피드백이 그리고, 나머지는 번호표만 보여요.
 export function mergeOverlappingMarkers(markers) {
-  const items = markers.flatMap((marker) => marker.placements.map((placement) => ({ marker, placement })));
+  const items = markers.flatMap((marker) => marker.placements.filter((placement) => !placement.band)
+    .map((placement) => ({ marker, placement })));
   const groups = [];
   for (const item of items) {
     const { placement } = item;

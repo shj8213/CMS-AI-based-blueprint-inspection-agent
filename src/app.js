@@ -1,4 +1,4 @@
-import { buildDxfAgentMessage, buildPdfAgentInput, buildPdfAgentResponse, findScanPages, isCodeReadResponse } from "./agent-input.js";
+import { buildDxfAgentMessage, buildPdfAgentInput, buildPdfAgentResponse, findScanPages, hasOutlinedText, isCodeReadResponse } from "./agent-input.js";
 import { mergeCodeReview, ProblemSheetError, readProblemSheet, reviewCodeReadAnalysis } from "./code-review.js";
 import { readDxf } from "./dxf.js";
 import { readPdf } from "./pdf.js";
@@ -531,6 +531,7 @@ function renderAgentInput() {
 }
 
 function showReview(hasDrawing, agentFileName = null) {
+  $("#outlined-text-warning").hidden = true;
   $(".reading-results").hidden = !hasDrawing;
   $(".review-layout").hidden = !hasDrawing;
   $("#result-title").textContent = hasDrawing ? "도면 읽기 결과" : $("#agent-result-title").textContent;
@@ -885,6 +886,7 @@ codeReadButton.addEventListener("click", async () => {
   const file = chosenFile;
   let scanFallback = false;
   setBusy(true, "code");
+  $("#outlined-text-warning").hidden = true;
   $("#read-error").textContent = "";
   $("#agent-result-error").textContent = "";
   $("#feedback-actions").hidden = true;
@@ -923,6 +925,7 @@ codeReadButton.addEventListener("click", async () => {
     stopProgress(true);
     showCodeReview(response, file, `${((performance.now() - started) / 1000).toFixed(1)}초, `);
     showReview(false, file.name);
+    $("#outlined-text-warning").hidden = !hasOutlinedText(pdfResult);
     updateFeedbackAction();
     if (!saved) $("#agent-result-progress").textContent += " 브라우저에 저장하지는 못했어요.";
   } catch (error) {

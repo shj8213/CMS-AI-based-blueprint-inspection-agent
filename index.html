@@ -420,6 +420,8 @@
       .feedback-marker.tone-yellow { border-color: #e0b000; }
       .feedback-marker.tone-blue { border-color: #1c6dd0; }
       .feedback-marker.candidate { border-style: dashed; opacity: .75; }
+      .feedback-marker.band { aspect-ratio: auto; min-width: 6px; border-radius: 0; transform: translateX(-50%); background: rgba(31, 95, 191, .08); }
+      .feedback-marker.band:hover { transform: translateX(-50%); }
       .feedback-marker:hover { opacity: 1; }
       .feedback-marker.linked { opacity: 1; border-width: 3px; box-shadow: 0 0 0 1.5px #fff, 0 0 0 5px rgba(31, 95, 191, .4); }
       .feedback-marker:focus-visible { outline: 3px solid #1f5fbf; outline-offset: 3px; }
@@ -705,7 +707,6 @@
                 class="hidden-input"
                 id="file-input"
                 type="file"
-                accept=".dxf,.pdf,application/pdf"
                 aria-label="DXF 또는 PDF 도면 파일 선택"
               >
             </div>
@@ -818,6 +819,7 @@
               <p class="privacy-note" id="feedback-progress-note" hidden>검토 시간은 도면에 따라 달라서 진행률은 예상값이에요.</p>
             </div>
             <p class="read-message error" id="agent-result-error" role="alert"></p>
+            <p class="read-message" id="outlined-text-warning" role="status" hidden>⚠ 이 PDF는 글자(치수·기호)가 선으로 그려져 있어 코드로 읽지 못해요. 피드백(③)은 받을 수 있지만 치수·공차·기호는 정확하지 않을 수 있고, 도면 위 위치도 정확히 못 찾을 수 있어요. 결과는 원본 도면과 꼭 직접 비교해 주세요.</p>
             <div id="feedback-actions" hidden>
               <p class="privacy-note">피드백을 요청하면 원본 PDF와 ② 분석 결과(문제지를 고르면 문제지도)가 Microsoft Copilot Studio의 ③으로 전송돼요.</p>
               <div class="problem-sheet" id="problem-sheet">
