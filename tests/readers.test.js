@@ -10,6 +10,7 @@ import {
 } from "../src/agent-input.js";
 import { mergeCodeReview, ProblemSheetError, readProblemSheet, reviewCodeReadAnalysis } from "../src/code-review.js";
 import { readDxf } from "../src/dxf.js";
+import { installMapPolyfill } from "../src/map-polyfill.js";
 import { partGuidance, roughnessAdvice } from "../src/part-guidance.js";
 import { readPdf } from "../src/pdf.js";
 import { inferCircle, multiply, transform } from "../src/geometry.js";
@@ -2036,6 +2037,20 @@ agentTest("검토 기억: 서로 다른 도면 2곳 이상에서 반복된 지�
   const text = combineMemoryText(null, lessons);
   assert(text.includes("자주 반복된 지적 유형") && text.includes("2개 도면") && !text.includes("이전 지적 요약"));
   assert(!/가상-축-예제|Ø20h7/.test(text), "파일 이름과 치수 값은 보내면 안 돼요.");
+});
+
+test("브라우저 호환: Map·WeakMap에 getOrInsert 계열이 없어도 같은 동작으로 채움", async () => {
+  // 기능이 없는 옛 브라우저를 흉내 내요(진짜 Map을 건드리지 않아요).
+  const fake = () => class { constructor() { this.items = new Map(); } has(k) { return this.items.has(k); } get(k) { return this.items.get(k); } set(k, v) { this.items.set(k, v); return this; } };
+  const scope = { Map: fake(), WeakMap: fake() };
+  installMapPolyfill(scope);
+  for (const Kind of [scope.Map, scope.WeakMap]) {
+    const map = new Kind();
+    let calls = 0;
+    assert(map.getOrInsertComputed("a", () => { calls += 1; return 1; }) === 1);
+    map.getOrInsertComputed("a", () => { calls += 1; return 2; });
+    assert(calls === 1 && map.getOrInsert("b", 5) === 5 && map.getOrInsert("b", 9) === 5, "없을 때만 넣어야 해요.");
+  }
 });
 
 agentTest("거칠기 누락 안내: 베어링은 y와 이유를, 그 밖의 부품은 기호를 지어내지 않고 확인 방법을 안내", async () => {
