@@ -459,6 +459,7 @@ async function renderFeedbackDrawing(review, analysis, coordinateMarkers, file, 
 
   const drawn = new Set();
   let sizeMismatch = false;
+  const spotCount = new Map();
   for (const page of pages) {
     const figure = document.createElement("figure");
     figure.className = "review-drawing-page";
@@ -498,7 +499,10 @@ async function renderFeedbackDrawing(review, analysis, coordinateMarkers, file, 
           `${marker.number}번 ${marker.label} 피드백 (${marker.findingId})${placement.candidate ? " 후보 위치" : ""} 카드 보기`);
         const label = document.createElement("span");
         label.className = "feedback-marker-label";
-        label.textContent = `${marker.number}${marker.symbol}`;
+        const spot = (spotCount.get(marker.number) ?? 0) + 1;
+        spotCount.set(marker.number, spot);
+        // 같은 지적의 두 번째 곳부터는 기호 없이 1′, 1″처럼 짧게 적어 번호가 길어지지 않게 해요.
+        label.textContent = spot === 1 ? `${marker.number}${marker.symbol}` : `${marker.number}${"′".repeat(Math.min(spot - 1, 2))}`;
         if (placement.labelRow) label.style.top = `${placement.labelRow * 22 - 6}px`;
         button.dataset.labelRow = String(placement.labelRow ?? 0);
         button.append(label);

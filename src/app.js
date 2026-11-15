@@ -211,8 +211,8 @@ function setBusy(value, kind = null) {
   fileInput.disabled = value;
   $("#remove-file")?.toggleAttribute("disabled", value);
   startButton.textContent = value && kind === "local" ? "읽는 중…" : "이 브라우저에서만 읽기";
-  agentStartButton.textContent = value && kind === "agent" ? "② 분석 중…" : "도면 분석하기";
-  codeReadButton.textContent = value && kind === "code" ? "코드로 읽는 중…" : "PDF 코드로 빠르게 읽기 (초안)";
+  agentStartButton.textContent = value && kind === "agent" ? "② 분석 중…" : "② 분석하기";
+  codeReadButton.textContent = value ? (kind === "agent" ? "② 분석 중…" : "분석 중…") : "도면 분석하기";
   cancelAgentButton.hidden = !value || kind !== "agent";
   cancelAgentButton.disabled = false;
   $("#feedback-start-button").disabled = value || !activeAnalysisEntry;
@@ -857,6 +857,7 @@ agentStartButton.addEventListener("click", async () => {
 codeReadButton.addEventListener("click", async () => {
   if (!chosenFile || !chosenFile.name.toLowerCase().endsWith(".pdf") || busy) return;
   const file = chosenFile;
+  let scanFallback = false;
   setBusy(true, "code");
   $("#read-error").textContent = "";
   $("#agent-result-error").textContent = "";
@@ -871,8 +872,12 @@ codeReadButton.addEventListener("click", async () => {
     const scanPages = findScanPages(pdfResult);
     if (scanPages.length) {
       stopProgress(false);
+      if (reviewerConsent.checked && !hostedSetupError) {
+        scanFallback = true;
+        return;
+      }
       $("#read-error").textContent =
-        `${scanPages.join(", ")}페이지가 스캔(그림) 페이지라 코드로 정확히 읽을 수 없어요. 전송 동의를 체크한 뒤 ‘도면 분석하기’(②)를 사용해 주세요.`;
+        `${scanPages.join(", ")}페이지가 스캔(그림) 페이지라 코드로 정확히 읽을 수 없어요. 위의 전송 동의를 체크한 뒤 ‘도면 분석하기’를 다시 눌러 주세요.`;
       return;
     }
     const response = buildPdfAgentResponse(pdfResult, file.name);
@@ -901,6 +906,7 @@ codeReadButton.addEventListener("click", async () => {
   } finally {
     $("#read-progress").textContent = "";
     setBusy(false);
+    if (scanFallback) agentStartButton.click();
   }
 });
 
