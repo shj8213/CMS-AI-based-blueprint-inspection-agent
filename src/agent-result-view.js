@@ -245,6 +245,104 @@ function finishNotes(markers, drawn, sizeMismatch) {
 const DRAWING_RENDER_WIDTH = 2400;
 const ZOOM_LEVELS = [1, 1.5, 2, 3, 4];
 
+const LABEL_CORNERS = [
+  { side: "right", vertical: "top" },
+  { side: "left", vertical: "top" },
+  { side: "right", vertical: "bottom" },
+  { side: "left", vertical: "bottom" },
+  { side: "center", vertical: "above" },
+  { side: "center", vertical: "below" },
+  { side: "center", vertical: "above", extra: 12 },
+  { side: "center", vertical: "below", extra: 12 },
+];
+
+function setLabelCorner(label, row, corner) {
+  const center = corner.side === "center";
+  const gap = 2 + (corner.extra ?? 0) + row * 20;
+  label.style.left = corner.side === "right" ? "100%" : center ? "50%" : "auto";
+  label.style.right = corner.side === "left" ? "100%" : "auto";
+  label.style.marginLeft = corner.side === "right" ? "2px" : "0";
+  label.style.marginRight = corner.side === "left" ? "2px" : "0";
+  label.style.transform = center ? "translateX(-50%)" : "";
+  label.style.top = corner.vertical === "top" ? `${row * 22 - 6}px`
+    : corner.vertical === "below" ? `calc(100% + ${gap}px)` : "auto";
+  label.style.bottom = corner.vertical === "bottom" ? `${-6 - row * 22}px`
+    : corner.vertical === "above" ? `calc(100% + ${gap}px)` : "auto";
+}
+
+function overlaps(a, b) {
+  return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+}
+
+// 번호 표시가 다른 동그라미나 번호를 가리지 않도록 오른쪽 위 → 왼쪽 위 → 오른쪽 아래 → 왼쪽 아래 → 위 → 아래 순서로 빈 자리를 골라요.
+// 빈 자리가 없으면 가장 적게 겹치는 자리를 써요.
+function placeMarkerLabels(frame) {
+  const buttons = [...frame.querySelectorAll(".feedback-marker")];
+  if (!buttons.length || !frame.getBoundingClientRect().width) return;
+  const groups = new Map();
+  for (const button of buttons) {
+    const key = `${button.style.left}|${button.style.top}|${button.style.width}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(button);
+  }
+  const area = frame.getBoundingClientRect();
+  // 좁은 화면에서는 최소 크기(22px) 때문에 가까운 동그라미끼리 겹칠 수 있어 최소 크기를 줄여요.
+  const circles = buttons.filter((button) => !button.classList.contains("label-only"));
+  for (const button of circles) button.style.minWidth = "";
+  const centers = circles.map((button) => {
+    const rect = button.getBoundingClientRect();
+    return { button, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  });
+  for (const a of centers) {
+    const nearest = Math.min(...centers.filter((b) => b !== a).map((b) => Math.hypot(a.x - b.x, a.y - b.y)));
+    if (nearest < 24) a.button.style.minWidth = `${Math.max(8, nearest - 2)}px`;
+  }
+  for (const button of buttons) {
+    if (button.classList.contains("label-only")) {
+      const owner = circles.find((other) => other.style.left === button.style.left && other.style.top === button.style.top);
+      if (owner) button.style.minWidth = owner.style.minWidth;
+    }
+  }
+  const entries = [...groups.values()].map((members) => ({
+    others: buttons.filter((button) => !members.includes(button) && !button.classList.contains("label-only"))
+      .map((button) => button.getBoundingClientRect()),
+    labels: members.map((button, index) => ({
+      label: button.querySelector(".feedback-marker-label"),
+      row: Number(button.dataset.labelRow ?? index),
+    })).filter((entry) => entry.label),
+    rects: [],
+  }));
+  // 처음엔 앞의 번호만 보고 고르고, 이후에는 다른 번호 전부를 보고 다시 골라요.
+  for (let pass = 0; pass < 3; pass += 1) {
+    let changed = false;
+    entries.forEach((entry, index) => {
+      const placed = entries.filter((other, otherIndex) => other !== entry && (pass > 0 || otherIndex < index))
+        .flatMap((other) => other.rects);
+      let chosen = LABEL_CORNERS[0];
+      let fewest = Infinity;
+      for (const corner of LABEL_CORNERS) {
+        for (const item of entry.labels) setLabelCorner(item.label, item.row, corner);
+        const rects = entry.labels.map((item) => item.label.getBoundingClientRect());
+        const outside = rects.some((rect) => rect.left < area.left || rect.right > area.right
+          || rect.top < area.top || rect.bottom > area.bottom);
+        const hits = outside ? Infinity : rects.reduce((sum, rect) => sum
+          + entry.others.filter((other) => overlaps(rect, other)).length
+          + placed.filter((other) => overlaps(rect, other)).length, 0);
+        if (hits < fewest) {
+          fewest = hits;
+          chosen = corner;
+        }
+        if (hits === 0) break;
+      }
+      if (entry.chosen !== chosen) changed = true;
+      entry.chosen = chosen;
+      for (const item of entry.labels) setLabelCorner(item.label, item.row, chosen);
+      entry.rects = entry.labels.map((item) => item.label.getBoundingClientRect());
+    });
+    if (!changed) break;
+  }
+}
+
 // 도면 그림을 확대·축소하는 버튼이에요. 보고 있던 가운데 위치를 유지하며 크기만 바꿔요.
 function createZoomControls(viewport, frame, pageNumber) {
   const controls = document.createElement("div");
@@ -282,6 +380,7 @@ function createZoomControls(viewport, frame, pageNumber) {
     zoomOut.disabled = zoom <= minZoom;
     reset.disabled = zoom <= minZoom;
     zoomIn.disabled = zoom >= maxZoom;
+    placeMarkerLabels(frame);
   };
   const step = (direction) => {
     const next = direction > 0
@@ -401,6 +500,7 @@ async function renderFeedbackDrawing(review, analysis, coordinateMarkers, file, 
         label.className = "feedback-marker-label";
         label.textContent = `${marker.number}${marker.symbol}`;
         if (placement.labelRow) label.style.top = `${placement.labelRow * 22 - 6}px`;
+        button.dataset.labelRow = String(placement.labelRow ?? 0);
         button.append(label);
         button.addEventListener("click", () => highlightFinding(String(marker.number), { scrollTo: "card" }));
         frame.append(button);
@@ -410,6 +510,8 @@ async function renderFeedbackDrawing(review, analysis, coordinateMarkers, file, 
     }
     figure.append(caption, createZoomControls(viewport, frame, page.pageNumber), viewport);
     area.append(figure);
+    // 화면에 붙은 뒤나 그림 크기가 바뀔 때 번호 자리를 다시 골라요.
+    new ResizeObserver(() => placeMarkerLabels(frame)).observe(frame);
   }
 
   finishNotes(markers, drawn, sizeMismatch);

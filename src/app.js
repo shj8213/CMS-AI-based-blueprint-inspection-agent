@@ -1,5 +1,5 @@
-import { buildDxfAgentMessage, buildPdfAgentResponse, findScanPages, isCodeReadResponse } from "./agent-input.js";
-import { mergeCodeReview, reviewCodeReadAnalysis } from "./code-review.js";
+import { buildDxfAgentMessage, buildPdfAgentInput, buildPdfAgentResponse, findScanPages, isCodeReadResponse } from "./agent-input.js";
+import { mergeCodeReview, ProblemSheetError, readProblemSheet, reviewCodeReadAnalysis } from "./code-review.js";
 import { readDxf } from "./dxf.js";
 import { readPdf } from "./pdf.js";
 import { AgentResultError, parseAgentResult } from "./agent-result.js";
@@ -26,6 +26,11 @@ const fileInput = $("#file-input");
 const feedbackFileInput = $("#feedback-file-input");
 const problemSheetInput = $("#problem-sheet-input");
 let problemSheetFile = null;
+// 문제지 PDF의 '조립 정보' 표를 코드로 읽은 결과예요. 그림·스캔 문제지는 null(③에 보낼 때만 사용).
+let problemSheetInfo = null;
+let problemSheetToken = 0;
+// 화면에 코드 점검 결과가 떠 있을 때만 문제지를 고르면 대조 결과로 다시 그려요.
+let codeReviewShown = false;
 const startButton = $("#start-button");
 const agentStartButton = $("#agent-start-button");
 const codeReadButton = $("#code-read-button");
@@ -371,6 +376,7 @@ function openSaved(id, resultType = "analysis") {
   }
   activeAnalysisEntry = null;
   activeAnalysisFile = null;
+  codeReviewShown = false;
   updateFeedbackAction();
   const response = resultType === "review"
     ? entry.kind === "review" ? entry.response : entry.reviewResponse
@@ -883,18 +889,11 @@ codeReadButton.addEventListener("click", async () => {
       renderHistory();
       await checkSavedMatch(file);
     }
-    const codeReview = reviewCodeReadAnalysis(response);
-    agentResultView.reset();
-    agentResultView.showResponse(JSON.stringify(codeReview), response, file);
     stopProgress(true);
+    showCodeReview(response, file, `${((performance.now() - started) / 1000).toFixed(1)}초, `);
     showReview(false, file.name);
     updateFeedbackAction();
-    const count = (kind) => codeReview.findings.filter((finding) => finding.classification === kind).length;
-    const seconds = ((performance.now() - started) / 1000).toFixed(1);
-    $("#agent-result-progress").textContent =
-      `PDF를 코드로 읽고 점검했어요(${seconds}초, 틀림 ${count("틀림")}건·확인 필요 ${count("확인 필요")}건·질문 ${count("질문")}개). `
-      + "더 자세한 검토는 ‘피드백 받기’(선택)."
-      + (saved ? "" : " 브라우저에 저장하지는 못했어요.");
+    if (!saved) $("#agent-result-progress").textContent += " 브라우저에 저장하지는 못했어요.";
   } catch (error) {
     stopProgress(false);
     console.error("PDF 코드 읽기 실패:", error instanceof Error ? error.name : typeof error);
@@ -904,6 +903,22 @@ codeReadButton.addEventListener("click", async () => {
     setBusy(false);
   }
 });
+
+function showCodeReview(response, file, timing = "") {
+  const codeReview = reviewCodeReadAnalysis(response, { problemSheet: problemSheetInfo });
+  agentResultView.reset();
+  agentResultView.showResponse(JSON.stringify(codeReview), response, file);
+  codeReviewShown = true;
+  const count = (kind) => codeReview.findings.filter((finding) => finding.classification === kind).length;
+  $("#agent-result-progress").textContent =
+    `PDF를 코드로 읽고 점검했어요(${timing}틀림 ${count("틀림")}건·확인 필요 ${count("확인 필요")}건·질문 ${count("질문")}개`
+    + `${problemSheetInfo ? `, 문제지 ‘${problemSheetFile?.name ?? ""}’와 대조` : ""}). 더 자세한 검토는 ‘피드백 받기’(선택).`;
+}
+
+function refreshCodeReview() {
+  if (!codeReviewShown || busy || !activeAnalysisEntry || !isCodeReadResponse(activeAnalysisEntry.response)) return;
+  showCodeReview(activeAnalysisEntry.response, activeAnalysisFile);
+}
 
 async function requestFeedback(file = activeAnalysisFile) {
   if (!activeAnalysisEntry || busy) return;
@@ -963,7 +978,8 @@ async function requestFeedback(file = activeAnalysisFile) {
     if (isCodeReadResponse(activeAnalysisEntry.response)) {
       try {
         const parsed = parseAgentResult(reviewResponse);
-        const merged = mergeCodeReview(reviewCodeReadAnalysis(activeAnalysisEntry.response), parsed.data);
+        const merged = mergeCodeReview(
+          reviewCodeReadAnalysis(activeAnalysisEntry.response, { problemSheet: problemSheetInfo }), parsed.data);
         if (merged !== parsed.data) reviewResponse = JSON.stringify(merged);
       } catch (error) {
         if (!(error instanceof AgentResultError)) throw error;
@@ -971,6 +987,7 @@ async function requestFeedback(file = activeAnalysisFile) {
       }
     }
     agentResultView.showResponse(reviewResponse, activeAnalysisEntry.response, file);
+    codeReviewShown = false;
     const reviewSaved = activeAnalysisEntry.id
       && analysisHistory.saveReview(activeAnalysisEntry.id, reviewResponse);
     if (reviewSaved) {
@@ -1005,10 +1022,41 @@ async function requestFeedback(file = activeAnalysisFile) {
 }
 
 $("#feedback-start-button").addEventListener("click", () => requestFeedback());
-function setProblemSheet(file) {
+// 문제지 PDF에 '조립 정보' 표가 있으면 코드로 읽어 도면과 대조해요. 실패해도 ③에 보낼 문제지로는 그대로 둬요.
+async function readProblemSheetFile(file) {
+  if (!file.name.toLowerCase().endsWith(".pdf")) {
+    return { info: null, note: "그림 문제지는 코드로 대조하지 않고, ‘피드백 받기’ 때 ③에 함께 보내요." };
+  }
+  const result = await readPdf(await file.arrayBuffer(), () => {}, { scanImages: false });
+  if (findScanPages(result).length) {
+    return { info: null, note: "스캔 문제지는 글자를 코드로 읽을 수 없어 대조하지 않고, ‘피드백 받기’ 때 ③에 함께 보내요." };
+  }
+  const info = readProblemSheet(buildPdfAgentInput(result, file.name));
+  return { info, note: `문제지 ‘조립 정보’ 표를 읽었어요(부품 ${info.parts.length}줄). 코드 점검에 대조 결과를 넣었어요.` };
+}
+
+async function setProblemSheet(file) {
+  const token = ++problemSheetToken;
   problemSheetFile = file;
+  problemSheetInfo = null;
   $("#problem-sheet-name").textContent = file ? file.name : "선택 안 함";
   $("#problem-sheet-remove").hidden = !file;
+  $("#problem-sheet-status").textContent = file ? "문제지를 읽는 중이에요…" : "";
+  if (file) {
+    let read;
+    try {
+      read = await readProblemSheetFile(file);
+    } catch (error) {
+      if (!(error instanceof ProblemSheetError)) {
+        console.error("문제지 읽기 실패:", error instanceof Error ? error.name : typeof error);
+      }
+      read = { info: null, note: error instanceof ProblemSheetError ? error.message : "문제지를 코드로 읽지 못했어요. ③에 보낼 때만 함께 보내요." };
+    }
+    if (token !== problemSheetToken) return;
+    problemSheetInfo = read.info;
+    $("#problem-sheet-status").textContent = read.note;
+  }
+  refreshCodeReview();
 }
 problemSheetInput.addEventListener("change", () => {
   const file = problemSheetInput.files?.[0] ?? null;
@@ -1019,9 +1067,9 @@ problemSheetInput.addEventListener("change", () => {
     return;
   }
   $("#agent-result-error").textContent = "";
-  setProblemSheet(file);
+  void setProblemSheet(file);
 });
-$("#problem-sheet-remove").addEventListener("click", () => setProblemSheet(null));
+$("#problem-sheet-remove").addEventListener("click", () => void setProblemSheet(null));
 feedbackFileInput.addEventListener("change", async () => {
   const file = feedbackFileInput.files?.[0] ?? null;
   feedbackFileInput.value = "";

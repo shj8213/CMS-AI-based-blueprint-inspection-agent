@@ -8,7 +8,7 @@ import {
   isCodeReadResponse,
   PDF_CODE_READER,
 } from "../src/agent-input.js";
-import { mergeCodeReview, reviewCodeReadAnalysis } from "../src/code-review.js";
+import { mergeCodeReview, ProblemSheetError, readProblemSheet, reviewCodeReadAnalysis } from "../src/code-review.js";
 import { readDxf } from "../src/dxf.js";
 import { readPdf } from "../src/pdf.js";
 import { inferCircle, multiply, transform } from "../src/geometry.js";
@@ -2089,9 +2089,12 @@ test("화면: PDF 코드 읽기 결과로 ② 없이 ③ 피드백과 좌표 동
     if (!app.querySelector("#review-screen").hidden) app.querySelector("#back-button").click();
   }
 });
-async function codeReviewOf(name) {
-  const input = buildPdfAgentInput(await readPdf(await fixture(name), () => {}, { scanImages: false }), name);
-  const review = reviewCodeReadAnalysis(input);
+async function codeReadInput(name) {
+  return buildPdfAgentInput(await readPdf(await fixture(name), () => {}, { scanImages: false }), name);
+}
+async function codeReviewOf(name, options) {
+  const input = await codeReadInput(name);
+  const review = reviewCodeReadAnalysis(input, options);
   const text = (id) => input.elements.find((element) => element.id === id)?.raw_text;
   const issues = review.findings.filter((finding) => finding.classification !== "질문");
   const questions = review.findings.filter((finding) => finding.classification === "질문");
@@ -2119,15 +2122,61 @@ test("코드 점검: 맞게 그린 기준 도면과 단순 PDF에서는 잘못 �
   const simple = await codeReviewOf("simple.pdf");
   assert(!simple.issues.length && simple.review.summary.includes("문제가 없다는 뜻은 아니에요"));
 });
-test("코드 점검: 기능사 양식 연습 도면(기준 오탐 0건, 비교본은 현재 규칙으로 3개 중 길이 합계만 찾음)", async () => {
+test("코드 점검: 기능사 양식 연습 도면(기준 오탐 0건, 비교본은 숨긴 틀림 3개를 모두 찾음)", async () => {
   const reference = await codeReviewOf("shaft-exam-style-reference.pdf");
   assert(!reference.issues.length, JSON.stringify(reference.issues.map((finding) => finding.what)));
-  assert(reference.review.not_missing.some((item) => item.reason.includes("= 118")), "맞는 합계 118을 확인된 정보로 남겨야 해요.");
-  const { text, issues } = await codeReviewOf("shaft-exam-style-challenge.pdf");
-  // 단면 키홈 폭(8N9 vs 그린 폭 6)과 없는 데이텀 C 참조는 아직 코드 규칙이 없어 찾지 못해요(정답표 참고).
-  assert(issues.length === 1 && issues[0].classification === "틀림", JSON.stringify(issues.map((finding) => finding.what)));
-  const [chain] = issues;
+  const passed = reference.review.not_missing.map((item) => `${item.item} ${item.reason}`).join(" / ");
+  for (const word of ["= 118", "키홈 폭 6N9", "데이텀 A-B"]) assert(passed.includes(word), `${word}: ${passed}`);
+  const { review, text, issues } = await codeReviewOf("shaft-exam-style-challenge.pdf");
+  parseAgentResult(JSON.stringify(review));
+  assert(issues.length === 3 && issues.every((finding) => finding.classification === "틀림"), JSON.stringify(issues.map((finding) => finding.what)));
+  const [chain, keyway, datum] = issues;
   assert(chain.what.includes("120") && chain.what.includes("118") && text(chain.analysis_item_ids[0]) === "120", chain.what);
+  assert(keyway.what.includes("8N9") && keyway.what.includes("약 6") && text(keyway.analysis_item_ids[0]) === "8N9", keyway.what);
+  assert(datum.what.includes("데이텀 C") && text(datum.analysis_item_ids[0]) === "A-C" && datum.confidence === "높음", datum.what);
+});
+test("코드 점검 데이텀: 네모 칸 데이텀이 없으면 판단하지 않고, 공차 값 옆 한 글자 참조도 확인함", () => {
+  const text = (id, raw, x, y) => ({ id, page_number: 1, category: "기타문자", raw_text: raw, location: { bbox: [x, y, x + 6, y + 10] } });
+  const line = (id, x0, y0, x1, y1) => ({ id, page_number: 1, category: "선", location: { bbox: [x0, y0, x1, y1] } });
+  const box = (prefix, x, y) => [line(`${prefix}1`, x - 4, y - 1, x + 10, y - 1), line(`${prefix}2`, x - 4, y + 12, x + 10, y + 12)];
+  const base = [text("V", "0.02", 100, 200), text("R", "D", 130, 200), text("S", "A-A", 300, 300)];
+  const none = reviewCodeReadAnalysis({ pages: [{ page_number: 1 }], elements: [...base, text("A", "A", 50, 50)] });
+  assert(!none.findings.length, "네모 칸 데이텀을 못 찾으면 판단하지 않아야 해요.");
+  const review = reviewCodeReadAnalysis({ pages: [{ page_number: 1 }], elements: [...base, text("A", "A", 50, 50), ...box("B", 50, 50)] });
+  assert(review.findings.length === 1 && review.findings[0].analysis_item_ids[0] === "R" && review.findings[0].what.includes("데이텀 D"),
+    JSON.stringify(review.findings));
+});
+test("문제지 대조: 문제지 '조립 정보' 표를 읽고, 기준 도면은 틀림 없이 질문 대신 확인된 정보로 남김", async () => {
+  const sheet = readProblemSheet(await codeReadInput("shaft-exam-problem-sheet.pdf"));
+  assert(sheet.fileName === "shaft-exam-problem-sheet.pdf" && sheet.keywayWidth === 6 && sheet.totalLength === 118, JSON.stringify(sheet));
+  assert(sheet.parts.map((part) => `${part.size}${part.fit}`).join(",") === "20k6,22m6,16h6", JSON.stringify(sheet.parts));
+  assert(sheet.parts[0].part.startsWith("베어링 6204") && sheet.parts[1].part.startsWith("스퍼 기어"));
+  const reference = await codeReviewOf("shaft-exam-style-reference.pdf", { problemSheet: sheet });
+  assert(!reference.issues.length && !reference.questions.length, JSON.stringify(reference.review.findings.map((finding) => finding.what)));
+  const passed = reference.review.not_missing.map((item) => item.reason).join(" / ");
+  for (const word of ["베어링 6204", "스퍼 기어", "V벨트 풀리", "키홈 폭 6", "118"]) assert(passed.includes(word), `${word}: ${passed}`);
+  assert(reference.review.limitations.some((item) => item.includes("shaft-exam-problem-sheet.pdf")));
+  await rejects(async () => readProblemSheet(await codeReadInput("shaft-exam-style-reference.pdf")), "조립 정보");
+  assert(new ProblemSheetError("x") instanceof Error);
+});
+test("문제지 대조: 비교본은 문제지 근거를 기존 지적에 더하고 중복 지적을 만들지 않음", async () => {
+  const sheet = readProblemSheet(await codeReadInput("shaft-exam-problem-sheet.pdf"));
+  const { issues } = await codeReviewOf("shaft-exam-style-challenge.pdf", { problemSheet: sheet });
+  assert(issues.length === 3, JSON.stringify(issues.map((finding) => finding.what)));
+  const [chain, keyway] = issues;
+  assert(chain.evidence.includes("문제지 전체 길이 118"), chain.evidence);
+  assert(keyway.evidence.includes("키홈 폭 6") && keyway.confidence === "높음", keyway.evidence);
+});
+test("문제지 대조: 끼워맞춤이 다르면 틀림, 지름이 없으면 확인 필요로 남김", () => {
+  const text = (id, raw, x, y) => ({ id, page_number: 1, category: "기타문자", raw_text: raw, location: { bbox: [x, y, x + raw.length * 6, y + 10] } });
+  const sheet = { fileName: "s.pdf", keywayWidth: null, totalLength: null, parts: [
+    { size: 20, fit: "k6", part: "베어링", text: "Ø20 k6 : 베어링" },
+    { size: 30, fit: "h7", part: "기어", text: "Ø30 h7 : 기어" },
+  ] };
+  const review = reviewCodeReadAnalysis({ pages: [{ page_number: 1 }], elements: [text("E1", "Ø20js6", 10, 10)] }, { problemSheet: sheet });
+  const [fit, missing] = review.findings.filter((finding) => finding.issue_type === "문제지 불일치");
+  assert(fit.classification === "틀림" && fit.what.includes("k6") && fit.what.includes("js6") && fit.analysis_item_ids[0] === "E1", JSON.stringify(fit));
+  assert(missing.classification === "확인 필요" && missing.what.includes("Ø30h7"), JSON.stringify(missing));
 });
 test("코드 점검 질문: 부품 표시가 없는 끼워맞춤 지름 구간은 파랑 '질문'으로 물어봄", async () => {
   const { review, questions, text } = await codeReviewOf("shaft-exam-style-reference.pdf");

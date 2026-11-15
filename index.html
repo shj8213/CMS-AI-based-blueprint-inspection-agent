@@ -704,11 +704,12 @@
             <div id="feedback-actions" hidden>
               <p class="privacy-note">피드백을 요청하면 원본 PDF와 ② 분석 결과(문제지를 고르면 문제지도)가 Microsoft Copilot Studio의 ③으로 전송돼요.</p>
               <div class="problem-sheet" id="problem-sheet">
-                <label class="select-button" for="problem-sheet-input">문제지(조립도) 함께 보내기 (선택·초안)</label>
+                <label class="select-button" for="problem-sheet-input">문제지(조립도) 대조·함께 보내기 (선택·초안)</label>
                 <input class="hidden-input" id="problem-sheet-input" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg">
                 <span id="problem-sheet-name">선택 안 함</span>
                 <button class="select-button" id="problem-sheet-remove" type="button" hidden>빼기</button>
-                <p class="privacy-note">문제지는 부품이 어디에 끼워지는지 알려 주는 참고 자료로만 써요. 저장되지 않고, 기능사 문제지는 저작권이 있으니 저장소·공개 사이트에 올리지 마세요.</p>
+                <p class="privacy-note" id="problem-sheet-status" role="status"></p>
+                <p class="privacy-note">문제지 PDF에 ‘조립 정보’ 표(예: <code>Ø20 k6 : 베어링 6204</code>, <code>키홈 폭 6</code>, <code>축 전체 길이 118</code>)가 있으면 홈페이지가 전송 없이 도면 글자와 대조해요. 문제지는 부품이 어디에 끼워지는지 알려 주는 참고 자료로만 써요. 저장되지 않고, 기능사 문제지는 저작권이 있으니 저장소·공개 사이트에 올리지 마세요.</p>
               </div>
               <button class="start-button" id="feedback-start-button" type="button">피드백 받기</button>
               <input class="hidden-input" id="feedback-file-input" type="file" accept=".pdf,application/pdf" aria-label="저장된 분석과 함께 보낼 원본 PDF 선택">
