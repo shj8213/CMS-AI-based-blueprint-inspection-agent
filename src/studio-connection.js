@@ -236,7 +236,9 @@ async function runDrawingWithStudio(file, {
 
     onProgress(agentLabel === "②"
       ? "②가 도면을 분석하고 있어요. 몇 분 정도 걸릴 수 있어요…"
-      : "③이 도면을 검토하고 있어요. 몇 분 정도 걸릴 수 있어요…");
+      : agentLabel === "팀장"
+        ? "팀장이 ②→③ 순서로 도면을 분석·검토하고 있어요. 몇 분 정도 걸릴 수 있어요…"
+        : "③이 도면을 검토하고 있어요. 몇 분 정도 걸릴 수 있어요…");
     let watermark = null;
     const seen = new Set();
     const messages = [];
@@ -293,6 +295,16 @@ export function analyzeDrawingWithStudio(file, options = {}) {
     agentLabel: "②",
     configKey: "tokenEndpoint",
     requestText: REQUEST_TEXT,
+  });
+}
+
+// 로컬 시험용: 팀장 에이전트가 ②→③을 한 번에 돌린다. 공개 사이트에는 연결하지 않는다.
+export function leadDrawingWithStudio(file, options = {}) {
+  return runDrawingWithStudio(file, {
+    ...options,
+    agentLabel: "팀장",
+    configKey: "leadTokenEndpoint",
+    requestText: "첨부한 도면 PDF를 ②로 분석한 뒤 그 결과로 ③에서 검토해 주세요. 저장된 응답 형식(요약, ② 분석 결과 JSON 블록, ③ 검토 결과 JSON 블록)을 지켜 주세요. 사람이 원본 도면과 대조해야 합니다.",
   });
 }
 

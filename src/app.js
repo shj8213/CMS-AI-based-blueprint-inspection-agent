@@ -14,7 +14,7 @@ import {
 } from "./studio-connection.js";
 import { createAnalysisHistory, fileFingerprint } from "./analysis-history.js";
 import { buildReferenceExamples, REFERENCE_FILE_NAME } from "./reference-examples.js";
-import { buildMemoryText, createReviewMemory } from "./review-memory.js";
+import { combineMemoryText, createReviewMemory } from "./review-memory.js";
 
 const $ = (selector) => document.querySelector(selector);
 const agentResultView = createAgentResultView();
@@ -26,6 +26,7 @@ const reviewMemory = createReviewMemory({
   key: historyName === "test" ? "blueprint-review-memory-test" : "blueprint-review-memory-v1",
 });
 let similarMemory = null;
+let memoryLessons = [];
 const savedTime = (value) => new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 const fileInput = $("#file-input");
 const feedbackFileInput = $("#feedback-file-input");
@@ -302,9 +303,12 @@ function updateMemoryMatch() {
   similarMemory = activeAnalysisEntry?.kind === "review"
     ? null
     : reviewMemory.findSimilar(activeAnalysisEntry?.response ?? "", activeAnalysisEntry?.fingerprint ?? null);
+  memoryLessons = activeAnalysisEntry?.kind === "review" ? [] : reviewMemory.lessons();
   $("#memory-consent").checked = false;
-  $("#memory-match").hidden = !similarMemory;
-  $("#memory-preview").textContent = similarMemory ? buildMemoryText(similarMemory.entry) : "";
+  $("#memory-match").hidden = !similarMemory && !memoryLessons.length;
+  $("#memory-similar-note").hidden = !similarMemory;
+  $("#memory-lessons-note").hidden = !memoryLessons.length;
+  $("#memory-preview").textContent = combineMemoryText(similarMemory?.entry, memoryLessons);
 }
 
 function renderHistory() {
@@ -995,7 +999,7 @@ async function requestFeedback(file = activeAnalysisFile) {
       analysisResult: activeAnalysisEntry.response,
       analysisOrigin: isCodeReadResponse(activeAnalysisEntry.response) ? "code" : "agent",
       problemSheet: problemSheetFile,
-      memoryText: similarMemory && $("#memory-consent").checked ? buildMemoryText(similarMemory.entry) : "",
+      memoryText: (similarMemory || memoryLessons.length) && $("#memory-consent").checked ? combineMemoryText(similarMemory?.entry, memoryLessons) : "",
       hostedAccess: hostedTokens,
       signal: agentController.signal,
       onProgress: (message) => {
@@ -1015,13 +1019,15 @@ async function requestFeedback(file = activeAnalysisFile) {
         // ③ 응답 형식이 맞지 않으면 합치지 않고, 아래 화면 표시에서 형식 오류를 알려요.
       }
     }
-    agentResultView.showResponse(reviewResponse, activeAnalysisEntry.response, file);
-    codeReviewShown = false;
-    reviewMemory.save({
+    const memoryEntry = reviewMemory.save({
       fingerprint: activeAnalysisEntry.fingerprint,
       analysisResponse: activeAnalysisEntry.response,
       reviewResponse,
     });
+    agentResultView.showResponse(reviewResponse, activeAnalysisEntry.response, file, {
+      onVerdict: memoryEntry ? (findingId, verdict) => reviewMemory.setVerdict(memoryEntry.id, findingId, verdict) : null,
+    });
+    codeReviewShown = false;
     renderHistory();
     const reviewSaved = activeAnalysisEntry.id
       && analysisHistory.saveReview(activeAnalysisEntry.id, reviewResponse);
@@ -1131,6 +1137,7 @@ $("#clear-memory").addEventListener("click", () => {
   if (busy || !window.confirm("저장된 검토 기억을 모두 삭제할까요? 분석·검토 결과는 지워지지 않고, 되돌릴 수 없어요.")) return;
   reviewMemory.clear();
   similarMemory = null;
+  memoryLessons = [];
   $("#memory-match").hidden = true;
   renderHistory();
 });

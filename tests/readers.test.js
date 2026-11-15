@@ -10,6 +10,7 @@ import {
 } from "../src/agent-input.js";
 import { mergeCodeReview, ProblemSheetError, readProblemSheet, reviewCodeReadAnalysis } from "../src/code-review.js";
 import { readDxf } from "../src/dxf.js";
+import { partGuidance, roughnessAdvice } from "../src/part-guidance.js";
 import { readPdf } from "../src/pdf.js";
 import { inferCircle, multiply, transform } from "../src/geometry.js";
 import { detectScanGeometry, pageScaleForScan } from "../src/scan.js";
@@ -18,8 +19,9 @@ import {
   createShaftSummary,
   displayValue,
   parseAgentResult,
+  splitLeadResponse,
 } from "../src/agent-result.js";
-import { analyzeDrawingWithStudio, reviewDrawingWithStudio } from "../src/studio-connection.js";
+import { analyzeDrawingWithStudio, leadDrawingWithStudio, reviewDrawingWithStudio } from "../src/studio-connection.js";
 import { getHostedStudioConfig, getHostedStudioToken } from "../src/studio-connection.js";
 import { onRequestGet as readHostedConfig } from "../functions/api/config.js";
 import { issueStudioToken } from "../functions/api/studio-tokens.js";
@@ -28,7 +30,7 @@ import { config as netlifyStudioTokenConfig, handleNetlifyStudioToken } from "..
 import { createAnalysisHistory, fileFingerprint } from "../src/analysis-history.js";
 import { buildReferenceExamples } from "../src/reference-examples.js";
 import { buildFeedbackMarkers, findTextMatches, mergeOverlappingMarkers, originDirection, pageMatches } from "../src/feedback-markers.js";
-import { buildMemoryText, createReviewMemory } from "../src/review-memory.js";
+import { buildLessonsText, buildMemoryText, combineMemoryText, createReviewMemory } from "../src/review-memory.js";
 
 const TEST_HISTORY_KEY = "blueprint-analysis-history-test";
 localStorage.removeItem(TEST_HISTORY_KEY);
@@ -923,6 +925,62 @@ function studioMock({
   }
   return { fetchImpl, requests };
 }
+
+async function leadSample() {
+  const dec = new TextDecoder();
+  const a = dec.decode(await fixture("agent-result.json"));
+  const r = dec.decode(await fixture("reviewer-result-v2.json"));
+  return { a, r };
+}
+
+agentTest("팀장 응답: ② 분석·③ 검토 JSON 블록을 나눠 읽음", async () => {
+  const { a, r } = await leadSample();
+  const text = `상태: 완료\n멈춘 단계: 없음\n지적 2건\n\n② 분석 결과\n\`\`\`json\n${a}\n\`\`\`\n\n③ 검토 결과\n\`\`\`json\n${r}\n\`\`\``;
+  const lead = splitLeadResponse(text);
+  assert(lead.status === "완료" && lead.summary.includes("지적 2건"));
+  assert(lead.analysis.schema_version === "1.2" && lead.review.schema_version === "2.0");
+});
+
+agentTest("팀장 응답: ③을 못 한 부분 완료는 ② 결과만 돌려주고 이유를 남김", async () => {
+  const { a } = await leadSample();
+  const text = `상태: 부분 완료\n멈춘 단계: ③\n\n② 분석 결과\n\`\`\`json\n${a}\n\`\`\`\n\n③ 검토 결과\n없음 (시간 초과)`;
+  const lead = splitLeadResponse(text);
+  assert(lead.status === "부분 완료" && lead.analysis && lead.review === null);
+  assert(lead.reviewNote.includes("시간 초과"));
+});
+
+agentTest("팀장 응답: 구간 누락·블록 중복·형식 뒤바뀜은 거절", async () => {
+  const { a, r } = await leadSample();
+  await rejects(async () => splitLeadResponse("상태: 완료\n요약만"), "구간을 찾지 못했어요");
+  await rejects(async () => splitLeadResponse(`② 분석 결과\n\`\`\`json\n${a}\n\`\`\`\n\`\`\`json\n${a}\n\`\`\`\n③ 검토 결과\n없음`), "여러 개");
+  await rejects(async () => splitLeadResponse(`② 분석 결과\n\`\`\`json\n${r}\n\`\`\`\n③ 검토 결과\n없음`), "② 구간에 ③");
+  await rejects(async () => splitLeadResponse(`② 분석 결과\n없음\n③ 검토 결과\n\`\`\`json\n${a}\n\`\`\``), "schema_version 2.0");
+});
+
+agentTest("팀장 연결: 별도 주소(leadTokenEndpoint)로 PDF를 보내고 응답을 모음", async () => {
+  const lead = testTokenEndpoint.replace("/example/", "/lead/");
+  const mock = studioMock({
+    activityPages: [{ activities: [
+      { id: "lead-answer", type: "message", replyToId: "sent-1", text: "상태: 완료" },
+      { type: "event", name: "turn.complete", replyToId: "sent-1" },
+    ] }],
+  });
+  const wrapped = async (target, options) => {
+    const url = new URL(String(target), location.href);
+    if (url.pathname.endsWith("/agent-connection.local.json")) {
+      return new Response(JSON.stringify({ leadTokenEndpoint: lead }), { headers: { "Content-Type": "application/json" } });
+    }
+    return mock.fetchImpl(target, options);
+  };
+  const progress = [];
+  const result = await leadDrawingWithStudio(testPdf(), { fetchImpl: wrapped, onProgress: (m) => progress.push(m), pollIntervalMs: 1, timeoutMs: 1000 });
+  assert(result === "상태: 완료");
+  assert(mock.requests.find(({ url }) => url.pathname.endsWith("/directline/token")).url.pathname.includes("/lead/"));
+  assert(progress.some((m) => m.includes("팀장이 ②→③ 순서로")));
+  const upload = mock.requests.find(({ url }) => url.pathname.endsWith("/upload"));
+  const activity = JSON.parse(await upload.options.body.get("activity").text());
+  assert(activity.text.includes("② 분석 결과 JSON 블록") && activity.text.includes("③ 검토 결과 JSON 블록"));
+});
 
 function testPdf() {
   return new File(["가상 PDF 내용"], "가상.pdf", { type: "application/pdf" });
@@ -1964,6 +2022,48 @@ agentTest("검토 기억: 비슷한 도면만 찾고 파일 이름·치수 값�
   assert(memory.list().length === 0 && memory.findSimilar(changed, "b") === null);
 });
 
+agentTest("검토 기억: 서로 다른 도면 2곳 이상에서 반복된 지적 유형만 규칙으로 모음", async () => {
+  const data = new Map();
+  const storage = { getItem: (k) => data.get(k) ?? null, setItem: (k, v) => data.set(k, v), removeItem: (k) => data.delete(k) };
+  const memory = createReviewMemory({ storage, key: "l" });
+  const analysis = `\`\`\`json\n${await agentFixture()}\n\`\`\``;
+  const review = `\`\`\`json\n${new TextDecoder().decode(await fixture("reviewer-result-v2.json"))}\n\`\`\``;
+  memory.save({ fingerprint: "a", analysisResponse: analysis, reviewResponse: review });
+  assert(memory.lessons().length === 0 && buildLessonsText([]) === "", "도면 1곳뿐이면 규칙이 없어야 해요.");
+  memory.save({ fingerprint: "b", analysisResponse: analysis, reviewResponse: review });
+  const lessons = memory.lessons();
+  assert(lessons.length === 1 && lessons[0].issueType === "연결 불확실" && lessons[0].count === 2);
+  const text = combineMemoryText(null, lessons);
+  assert(text.includes("자주 반복된 지적 유형") && text.includes("2개 도면") && !text.includes("이전 지적 요약"));
+  assert(!/가상-축-예제|Ø20h7/.test(text), "파일 이름과 치수 값은 보내면 안 돼요.");
+});
+
+agentTest("거칠기 누락 안내: 베어링은 y와 이유를, 그 밖의 부품은 기호를 지어내지 않고 확인 방법을 안내", async () => {
+  const bearing = roughnessAdvice("베어링");
+  assert(bearing.how.includes("y") && bearing.why.includes("회전"), "베어링은 y와 회전 이유를 알려야 해요.");
+  const other = roughnessAdvice("기어");
+  assert(!/기호 y/.test(other.how) && other.how.includes("규격집"), "다른 부품은 기호를 단정하면 안 돼요.");
+});
+
+agentTest("검토 기억: 사람이 남긴 맞음·아님 판단을 저장하고 규칙에 반영(한 번만 나온 유형도 포함, 같은 판단은 취소)", async () => {
+  const data = new Map();
+  const storage = { getItem: (k) => data.get(k) ?? null, setItem: (k, v) => data.set(k, v), removeItem: (k) => data.delete(k) };
+  const memory = createReviewMemory({ storage, key: "v" });
+  const analysis = `\`\`\`json\n${await agentFixture()}\n\`\`\``;
+  const review = `\`\`\`json\n${new TextDecoder().decode(await fixture("reviewer-result-v2.json"))}\n\`\`\``;
+  const entry = memory.save({ fingerprint: "a", analysisResponse: analysis, reviewResponse: review });
+  const findingId = entry.findings[0].findingId;
+  assert(findingId && memory.lessons().length === 0, "판단이 없고 도면 1곳이면 규칙이 없어야 해요.");
+  assert(memory.setVerdict(entry.id, findingId, "아님") && memory.list()[0].findings[0].verdict === "아님");
+  const lessons = memory.lessons();
+  assert(lessons.length === 1 && lessons[0].rejected === 1 && lessons[0].confirmed === 0);
+  const text = combineMemoryText(null, lessons);
+  assert(text.includes("맞음 0·아님 1") && text.includes("확인 필요"));
+  memory.setVerdict(entry.id, findingId, "아님");
+  assert(memory.list()[0].findings[0].verdict === "" && memory.lessons().length === 0, "같은 판단을 다시 누르면 취소돼야 해요.");
+  assert(!memory.setVerdict(entry.id, findingId, "모름") && !memory.setVerdict("없음", findingId, "맞음"));
+});
+
 agentTest("③ 요청: 동의한 이전 지적 요약만 참고 자료로 붙임", async () => {
   const json = new TextDecoder().decode(await fixture("reviewer-result-v2.json"));
   const sent = async (memoryText) => {
@@ -2278,12 +2378,12 @@ test("V벨트 기출형 연습: 문제지를 읽고 기준 도면은 거칠기�
   const rough = reference.review.not_missing.filter((item) => item.item.includes("표면 거칠기"));
   assert(rough.length === 4 && rough.every((item) => item.analysis_item_ids.length === 2), JSON.stringify(rough));
 });
-test("V벨트 기출형 연습: 비교본의 숨긴 틀림 6개(문제지 없이 3개)를 찾고 틀린 치수 42를 가리킴", async () => {
+test("V벨트 기출형 연습: 비교본의 숨긴 틀림 6개(문제지 없이 3개)를 찾고 합계 불일치만 알리고 특정 치수는 가리키지 않음", async () => {
   const sheet = readProblemSheet(await codeReadInput("vbelt-exam-problem-sheet.pdf"));
   const alone = await codeReviewOf("vbelt-shaft-exam-style-challenge.pdf");
   const chain = alone.issues.find((finding) => finding.what.includes("직렬 치수 합계"));
-  assert(chain?.classification === "틀림" && chain.what.includes("42") && chain.what.includes("약 44"), chain?.what);
-  assert(alone.text(chain.analysis_item_ids[0]) === "42" && alone.text(chain.analysis_item_ids[1]) === "123", chain.analysis_item_ids.map(alone.text).join(","));
+  assert(chain?.classification === "틀림" && chain.what.includes("121") && chain.what.includes("123") && !chain.what.includes("약 44"), chain?.what);
+  assert(chain.analysis_item_ids.length === 1 && alone.text(chain.analysis_item_ids[0]) === "123", chain.analysis_item_ids.map(alone.text).join(","));
   const keyway = alone.issues.find((finding) => finding.what.includes("6N9"));
   assert(keyway?.classification === "틀림" && keyway.what.includes("약 5"), keyway?.what);
   assert(alone.issues.some((finding) => finding.what.includes("k6") && finding.what.includes("17, 14")));
@@ -2315,6 +2415,18 @@ test("코드 점검 질문: 부품 표시가 없는 끼워맞춤 지름 구간�
   assert(review.summary.includes(`질문 ${questions.length}개`), review.summary);
   const old = await codeReviewOf("shaft-practice-challenge.pdf");
   assert(!old.questions.some((finding) => finding.question.text.includes("k6")), "‘베어링부’처럼 부품이 적힌 k6는 묻지 않아야 해요.");
+});
+test("부품 안내: 질문에 고른 부품별 이유를 보여 주고, 확인된 값이 없으면 값을 지어내지 않음", async () => {
+  const { questions } = await codeReviewOf("shaft-exam-style-reference.pdf");
+  const guidance = questions[0].question.guidance;
+  assert(guidance && Object.keys(guidance).length === questions[0].question.choices.length, JSON.stringify(guidance));
+  const bearing = partGuidance("베어링", "k6");
+  assert(bearing.some((line) => line.includes("거칠기 기호 y")) && bearing.some((line) => line.includes("표면 거칠기: y")), bearing.join("|"));
+  const seal = partGuidance("오일실", "k6");
+  assert(seal.some((line) => line.includes("거칠기 기호가 필요")) && seal.some((line) => line.includes("소문자")), seal.join("|"));
+  assert(seal.filter((line) => line.includes("아직 확인된 값이 없어요")).length === 2, seal.join("|"));
+  assert(!seal.some((line) => /h\d|[wxyz] /.test(line.replace("k6", ""))), "확인되지 않은 값은 넣지 않아요.");
+  assert(partGuidance("모름", "k6").length === 1 && partGuidance("없는 부품", "k6").length === 0);
 });
 test("코드 점검 질문: 부품 이름이 적힌 구간은 묻지 않고, 질문은 ③ 지적을 중복으로 빼지 않음", async () => {
   const text = (id, raw, x, y) => ({ id, page_number: 1, category: "기타문자", raw_text: raw, location: { bbox: [x, y, x + raw.length * 6, y + 10] } });

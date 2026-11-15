@@ -218,6 +218,30 @@ function objectEnd(text, start) {
   return -1;
 }
 
+// 팀장 응답: 요약 → "② 분석 결과" JSON 블록 → "③ 검토 결과" JSON 블록. 못 한 단계는 블록 없이 "없음 (이유)".
+export function splitLeadResponse(input) {
+  const text = String(input ?? "").trim().replace(/^\uFEFF/, "");
+  if (!text) throw new AgentResultError("팀장 응답이 비어 있어요.");
+  const first = text.search(/^[ \t]*②[ \t]*분석 결과/m);
+  const second = text.search(/^[ \t]*③[ \t]*검토 결과/m);
+  if (first < 0 || second < 0 || second < first) {
+    throw new AgentResultError("팀장 응답에서 '② 분석 결과'와 '③ 검토 결과' 구간을 찾지 못했어요.");
+  }
+  const summary = text.slice(0, first).trim();
+  const section = (body, label) => {
+    const fences = [...body.matchAll(/^[ \t]*```[ \t]*json[ \t]*\r?\n[\s\S]*?^[ \t]*```[ \t]*\r?$/gim)];
+    if (fences.length > 1) throw new AgentResultError(`${label} 구간에 JSON 코드 블록이 여러 개예요.`);
+    if (!fences.length) return { data: null, note: body.replace(/^[^\n]*\n?/, "").trim() };
+    return { data: parseAgentResult(fences[0][0]).data, note: "" };
+  };
+  const analysis = section(text.slice(first, second), "②");
+  const review = section(text.slice(second), "③");
+  if (analysis.data?.schema_version === "2.0") throw new AgentResultError("② 구간에 ③ 검토 결과 형식이 들어 있어요.");
+  if (review.data && review.data.schema_version !== "2.0") throw new AgentResultError("③ 구간은 schema_version 2.0이어야 해요.");
+  const status = (summary.match(/상태[ \t]*[:：][ \t]*(완료|부분 완료|실패|입력 필요)/) ?? [])[1] ?? "";
+  return { summary, status, analysis: analysis.data, review: review.data, analysisNote: analysis.note, reviewNote: review.note };
+}
+
 export function parseAgentResult(input) {
   const text = input.trim().replace(/^\uFEFF/, "");
   if (!text) throw new AgentResultError("② 응답이나 JSON을 먼저 붙여 넣어 주세요.");

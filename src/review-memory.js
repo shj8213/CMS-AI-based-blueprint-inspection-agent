@@ -4,6 +4,8 @@ const MAX_ENTRIES = 20;
 const MAX_FINDINGS = 8;
 const MAX_PATTERNS = 30;
 const MAX_TEXT = 120;
+const MIN_LESSON_COUNT = 2;
+const MAX_LESSONS = 5;
 const NOTATION_CATEGORIES = new Set(["치수", "치수공차", "기하공차", "표면거칠기", "표준참조"]);
 // 비슷한 도면 기준: 도면 종류가 겹치고(필수), 표기 모양의 겹침이 이 값 이상이면 비슷하다고 봐요.
 export const SIMILARITY_THRESHOLD = 0.6;
@@ -61,6 +63,8 @@ export function summarizeFindings(reviewResponse) {
     return [];
   }
   return (Array.isArray(data.findings) ? data.findings : []).slice(0, MAX_FINDINGS).map((finding) => ({
+    findingId: clean(finding.id, 20),
+    verdict: "",
     classification: clean(finding.classification, 20),
     issueType: clean(finding.issue_type, 40),
     what: clean(finding.what),
@@ -138,6 +142,42 @@ export function createReviewMemory({ storage = browserStorage(), key = "blueprin
       }
       return best;
     },
+    // 도면 종류와 상관없이 서로 다른 도면 2곳 이상에서 반복된 지적 유형만 모아요.
+    lessons() {
+      const found = new Map();
+      for (const entry of list()) {
+        for (const type of new Set(entry.findings.map((finding) => finding.issueType))) {
+          const current = found.get(type) ?? { issueType: type, count: 0, confirmed: 0, rejected: 0, example: "", classification: "" };
+          current.count += 1;
+          for (const finding of entry.findings.filter((item) => item.issueType === type)) {
+            if (finding.verdict === "맞음") current.confirmed += 1;
+            if (finding.verdict === "아님") current.rejected += 1;
+            if (!current.example || (finding.verdict === "맞음" && !current.exampleConfirmed)) {
+              current.example = finding.what;
+              current.classification = finding.classification;
+              current.exampleConfirmed = finding.verdict === "맞음";
+            }
+          }
+          found.set(type, current);
+        }
+      }
+      // 사람이 판단을 남긴 유형은 한 번만 나와도 포함하고, 판단이 많은 유형을 먼저 보여 줘요.
+      return [...found.values()]
+        .filter((lesson) => lesson.count >= MIN_LESSON_COUNT || lesson.confirmed || lesson.rejected)
+        .map(({ exampleConfirmed, ...lesson }) => lesson)
+        .sort((a, b) => (b.confirmed + b.rejected) - (a.confirmed + a.rejected) || b.count - a.count)
+        .slice(0, MAX_LESSONS);
+    },
+    // 사람이 지적마다 남긴 '맞음'/'아님' 판단을 저장해요. 같은 판단을 다시 누르면 취소돼요.
+    setVerdict(entryId, findingId, verdict) {
+      if (!["맞음", "아님", ""].includes(verdict)) return false;
+      const entries = list();
+      const entry = entries.find((item) => item.id === entryId);
+      const finding = entry?.findings.find((item) => item.findingId === findingId);
+      if (!finding) return false;
+      finding.verdict = finding.verdict === verdict ? "" : verdict;
+      return write(entries);
+    },
     remove(id) {
       write(list().filter((entry) => entry.id !== id));
     },
@@ -153,4 +193,18 @@ export function buildMemoryText(entry) {
     ? entry.findings.map((finding, index) => `${index + 1}. [${finding.classification || "분류 없음"}] ${finding.issueType}: ${finding.what}`)
     : ["(지적이 없었어요)"];
   return [`도면 종류: ${entry.drawingTypes.join(", ")}`, "이전 지적 요약:", ...lines].join("\n");
+}
+
+// 비슷한 도면이 아니어도 반복된 지적 유형은 "놓치기 쉬운 점"으로 알려 줘요. 이번 PDF에서 다시 확인해야 해요.
+export function buildLessonsText(lessons) {
+  if (!lessons.length) return "";
+  const judged = (lesson) => (lesson.confirmed || lesson.rejected
+    ? `, 사람 확인: 맞음 ${lesson.confirmed}·아님 ${lesson.rejected}` : "");
+  return ["자주 반복된 지적 유형과 사람의 판단(참고용, 이번 도면에서 직접 확인할 것):",
+    ...lessons.map((lesson, index) => `${index + 1}. ${lesson.issueType} (${lesson.count}개 도면${judged(lesson)}): ${lesson.example}`),
+    "'아님'이 많은 유형은 도면에서 직접 확인한 근거가 있을 때만 지적하고, 없으면 '확인 필요'로 남기세요. '맞음'이 많은 유형은 놓치지 마세요."].join("\n");
+}
+
+export function combineMemoryText(entry, lessons) {
+  return [entry ? buildMemoryText(entry) : "", buildLessonsText(lessons)].filter(Boolean).join("\n\n");
 }
