@@ -491,9 +491,6 @@
       #upload-screen .start-button { background: #f76707; }
       #upload-screen .start-button:hover:not(:disabled) { background: #e8590c; }
       #upload-screen .start-button:disabled { background: #ffd8a8; }
-      .check-list-title { margin: 12px 0 4px; font-weight: 700; }
-      .manual-check-list { list-style: none; margin: 0 0 12px; padding: 0; font-size: 0.9rem; }
-      .manual-check-list li { margin: 4px 0; }
       #feedback-start-button { background: #f76707; }
       .problem-sheet { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; }
       .problem-sheet .privacy-note { flex-basis: 100%; margin: 0; }
@@ -720,17 +717,7 @@
                 <p class="privacy-note" id="problem-sheet-status" role="status"></p>
                 <p class="privacy-note">문제지 PDF에 ‘조립 정보’ 표(예: <code>Ø20 k6 : 베어링 6204</code>, <code>키홈 폭 6</code>, <code>축 전체 길이 118</code>)가 있으면 홈페이지가 전송 없이 도면 글자와 대조해요. 문제지는 부품이 어디에 끼워지는지 알려 주는 참고 자료로만 써요. 저장되지 않고, 기능사 문제지는 저작권이 있으니 저장소·공개 사이트에 올리지 마세요.</p>
               </div>
-              <div id="code-scope-note">
-                <p class="check-list-title">직접 확인 체크리스트</p>
-                <p class="privacy-note">코드 점검은 숫자·글자 몇 가지 규칙만 비교해요. 아래는 코드가 보지 못하는 부분이라, 원본 도면을 보면서 직접 확인하고 맞으면 체크해 주세요. 체크 표시는 저장되지 않고 점검 결과에도 영향을 주지 않아요. 더 확인하려면 ‘피드백 받기’(③)를 이어서 쓸 수 있어요.</p>
-                <ul class="manual-check-list">
-                  <li><label><input type="checkbox"> <b>세로 치수</b> — 지름과 단 길이가 서로 맞나요? (위아래 방향 치수는 코드가 비교하지 않아요)</label></li>
-                  <li><label><input type="checkbox"> <b>조립 그림</b> — 베어링·풀리 같은 부품이 알맞은 자리에 끼워지나요?</label></li>
-                  <li><label><input type="checkbox"> <b>KS 규격</b> — 끼워맞춤·키홈 값이 규격표와 맞나요? (코드는 도면 안의 숫자끼리만 비교해요)</label></li>
-                  <li><label><input type="checkbox"> <b>공차·거칠기 값</b> — 기하공차와 표면 거칠기 값이 알맞나요? (값이 적혀 있는지만 봐요)</label></li>
-                  <li><label><input type="checkbox"> <b>지시선·빠진 치수</b> — 지시선이 올바른 곳을 가리키고, 빠진 치수는 없나요?</label></li>
-                </ul>
-              </div>
+              <p class="privacy-note" id="code-scope-note">코드 점검은 정해진 규칙만 봐서 세로 치수·조립 그림·KS 규격·공차 값이 맞는지는 보지 못해요. 이런 부분은 ‘피드백 받기’(③)로 이어서 확인하고, 마지막 판단은 원본 도면을 보며 직접 하세요.</p>
               <button class="start-button" id="feedback-start-button" type="button">피드백 받기</button>
               <input class="hidden-input" id="feedback-file-input" type="file" accept=".pdf,application/pdf" aria-label="저장된 분석과 함께 보낼 원본 PDF 선택">
               <button class="select-button" id="cancel-feedback" type="button" hidden>기다리기 중단</button>
