@@ -2182,6 +2182,7 @@ test("문제지 대조: 끼워맞춤이 다르면 틀림, 지름이 없으면 �
 test("V벨트 기출형 연습: 문제지를 읽고 기준 도면은 거칠기까지 오탐 0건", async () => {
   const sheet = readProblemSheet(await codeReadInput("vbelt-exam-problem-sheet.pdf"));
   assert(sheet.keywayWidth === 5 && sheet.totalLength === 123, JSON.stringify(sheet));
+  assert(sheet.keywayDepth === 11 && sheet.geometric.includes("기하공차"), JSON.stringify(sheet));
   assert(sheet.parts.map((part) => `${part.size}${part.fit ?? ""}`).join(",") === "17k6,16,14h6", JSON.stringify(sheet.parts));
   assert(sheet.parts[1].part.startsWith("오일실"), sheet.parts[1].part);
   const plain = await codeReviewOf("vbelt-shaft-exam-style-reference.pdf");
@@ -2191,7 +2192,7 @@ test("V벨트 기출형 연습: 문제지를 읽고 기준 도면은 거칠기�
   const rough = reference.review.not_missing.filter((item) => item.item.includes("표면 거칠기"));
   assert(rough.length === 4 && rough.every((item) => item.analysis_item_ids.length === 2), JSON.stringify(rough));
 });
-test("V벨트 기출형 연습: 비교본의 숨긴 틀림 4개(문제지 없이 3개)를 찾고 틀린 치수 42를 가리킴", async () => {
+test("V벨트 기출형 연습: 비교본의 숨긴 틀림 6개(문제지 없이 3개)를 찾고 틀린 치수 42를 가리킴", async () => {
   const sheet = readProblemSheet(await codeReadInput("vbelt-exam-problem-sheet.pdf"));
   const alone = await codeReviewOf("vbelt-shaft-exam-style-challenge.pdf");
   const chain = alone.issues.find((finding) => finding.what.includes("직렬 치수 합계"));
@@ -2208,6 +2209,10 @@ test("V벨트 기출형 연습: 비교본의 숨긴 틀림 4개(문제지 없이
   const rough = issues.find((finding) => finding.what.includes("표면 거칠기"));
   assert(rough?.classification === "확인 필요" && rough.what.startsWith("Ø16") && rough.what.includes("오일실"), rough?.what);
   assert(issues.filter((finding) => finding.what.includes("거칠기")).length === 1, JSON.stringify(issues.map((finding) => finding.what)));
+  const depth = issues.find((finding) => finding.what.startsWith("키홈 깊이"));
+  assert(depth?.classification === "틀림" && depth.what.includes("11") && depth.what.includes("12"), depth?.what);
+  const runout = issues.find((finding) => finding.what.startsWith("기하공차"));
+  assert(runout?.classification === "확인 필요", runout?.what);
   assert(!questions.length, `문제지로 부품을 알면 다시 묻지 않아야 해요: ${questions.map((finding) => finding.what).join(" / ")}`);
   assert(review.limitations.some((item) => item.includes("거칠기")));
 });

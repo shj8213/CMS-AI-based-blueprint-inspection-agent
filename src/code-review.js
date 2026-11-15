@@ -435,6 +435,8 @@ function askFittedParts(rows) {
 // 문제지 PDF의 '조립 정보' 표(팀이 정한 형식)만 글자로 읽어요. 조립도 그림은 해석하지 않아요.
 //   Ø20 k6 : 베어링 6204   /   키홈 폭 6   /   축 전체 길이 118
 const SHEET_PART = /[⌀Ø∅φ]\s*(\d+(?:\.\d+)?)\s*([a-hj-zA-HJ-Z]{1,2}\d{1,2})?\s*[:：]\s*(.+)$/;
+const SHEET_KEY_DEPTH = /키\s*홈\s*깊이\s*(\d+(?:\.\d+)?)/;
+const SHEET_GEOMETRIC = /기하\s*공차/;
 const SHEET_TOTAL = /전체\s*길이\s*(\d+(?:\.\d+)?)/;
 const DRAWING_KEY_WIDTH = /^(\d+(?:\.\d+)?)\s*[NP]9$/;
 const PLAIN_DIAMETER = /[⌀Ø∅φ]\s*(\d+(?:\.\d+)?)/g;
@@ -451,6 +453,8 @@ export function readProblemSheet(analysis) {
   const parts = [];
   let keywayWidth = null;
   let totalLength = null;
+  let keywayDepth = null;
+  let geometric = null;
   for (const row of rows) {
     if (row.page !== heading.page || row.center < heading.center) continue;
     const part = row.text.match(SHEET_PART);
@@ -462,11 +466,14 @@ export function readProblemSheet(analysis) {
     if (width) keywayWidth = Number(width[1]);
     const total = row.text.match(SHEET_TOTAL);
     if (total) totalLength = Number(total[1]);
+    const depth = row.text.match(SHEET_KEY_DEPTH);
+    if (depth) keywayDepth = Number(depth[1]);
+    if (SHEET_GEOMETRIC.test(row.text)) geometric = row.text;
   }
   if (!parts.length && keywayWidth == null && totalLength == null) {
     throw new ProblemSheetError("'조립 정보' 표에서 대조할 줄(예: Ø20 k6 : 베어링)을 찾지 못했어요.");
   }
-  return { fileName: data?.source?.file_name ?? "", parts, keywayWidth, totalLength };
+  return { fileName: data?.source?.file_name ?? "", parts, keywayWidth, totalLength, keywayDepth, geometric };
 }
 
 const SHEET_BASIS = "문제지 '조립 정보' 표와 도면 글자를 코드로 비교함";
@@ -605,7 +612,86 @@ function compareWithSheet(sheet, texts, rows, dimensions, findings) {
       passed.push({ item: "축 전체 길이", location: where(longest.text), reason: `문제지에서 확인: ${format(sheet.totalLength)}과 같아요.`, analysis_item_ids: [longest.text.id] });
     }
   }
+  const features = checkSheetFeatures(sheet, texts, dimensions);
+  extra.push(...features.extra);
+  passed.push(...features.passed);
   return { extra, passed, answered, roughness: checkSheetRoughness(sheet, texts, rows, dimensions) };
+}
+
+// ── 문제지의 키홈 깊이와 기하공차 ────────────────────────────────
+// 키홈 깊이: N9·P9 키홈 폭 글자 가까이(약 25mm 안)의 숫자만 있는 글자를 깊이로 봐요.
+// 기하공차: 문제지가 기하공차를 요구하는데 도면에 공차 값(예: 0.011)이 하나도 없으면 알려요.
+const SHEET_TOLERANCE_VALUE = /^0?\.\d{1,3}$/;
+// 거칠기(Ra) 표준 값은 기하공차 값이 아니므로 제외해요.
+const ROUGHNESS_STANDARD_VALUES = new Set([0.1, 0.2, 0.4, 0.8, 1.6, 3.2, 6.3, 12.5]);
+
+function checkSheetFeatures(sheet, texts, dimensions) {
+  const result = { extra: [], passed: [] };
+  const scale = drawingScale(dimensions);
+  const keyText = texts.find((text) => KEY_WIDTH_TEXT.test(text.text));
+  if (sheet.keywayDepth != null && keyText && scale) {
+    const width = Number(keyText.text.match(KEY_WIDTH_TEXT)[1]);
+    const reach = 25 * scale;
+    const centre = (text) => [(text.x0 + text.x1) / 2, (text.y0 + text.y1) / 2];
+    const [kx, ky] = centre(keyText);
+    const near = texts.filter((text) => text !== keyText && text.page === keyText.page && NUMBER.test(text.text)
+      && Number(text.text) !== width && Math.hypot(centre(text)[0] - kx, centre(text)[1] - ky) <= reach);
+    const same = near.find((text) => Number(text.text) === sheet.keywayDepth);
+    if (same) {
+      result.passed.push({
+        item: `키홈 깊이 ${format(sheet.keywayDepth)}`,
+        analysis_item_ids: [same.id, keyText.id],
+        location: where(same),
+        reason: `문제지에서 확인: 키홈 깊이 ${format(sheet.keywayDepth)}이 단면 키홈 근처에 같은 값으로 있어요.`,
+      });
+    } else {
+      const other = near[0];
+      result.extra.push({
+        classification: other ? "틀림" : "확인 필요",
+        issue_type: other ? "표기 불일치" : "누락",
+        basis: SHEET_BASIS,
+        analysis_item_ids: [other?.id ?? keyText.id, keyText.id],
+        location: where(other ?? keyText),
+        what: other
+          ? `키홈 깊이: 문제지 ${format(sheet.keywayDepth)} ≠ 도면 ${other.text}`
+          : `키홈 깊이: 문제지의 ${format(sheet.keywayDepth)}을 단면 키홈 근처에서 찾지 못했어요.`,
+        why: "문제지 조립 정보의 키홈 깊이와 단면의 깊이 치수가 달라요.",
+        evidence: `문제지 "키홈 깊이 ${format(sheet.keywayDepth)}", 도면 ${other ? `"${other.text}"` : "근처 숫자 없음"}(키홈 폭 ${keyText.text} 글자 주변 약 25mm 안)`,
+        confidence: other ? "중간" : "낮음",
+        confidence_reason: "키홈 폭 글자 가까이의 숫자를 깊이 치수로 봤어요. 다른 숫자가 근처에 있으면 틀릴 수 있어요.",
+        how_to_resolve: "문제지에 맞게 키홈 깊이를 고쳐 주세요.",
+        next_check: "단면도의 깊이 치수를 확인해 주세요.",
+      });
+    }
+  }
+  if (sheet.geometric) {
+    const values = texts.filter((text) => SHEET_TOLERANCE_VALUE.test(text.text)
+      && !ROUGHNESS_STANDARD_VALUES.has(Number(text.text)));
+    if (values.length) {
+      result.passed.push({
+        item: "기하공차 표기",
+        analysis_item_ids: [values[0].id],
+        location: where(values[0]),
+        reason: `문제지에서 기하공차를 요구했고, 도면에 공차 값 ${values[0].text}이 있어요(코드로 글자만 확인).`,
+      });
+    } else {
+      result.extra.push({
+        classification: "확인 필요",
+        issue_type: "누락",
+        basis: SHEET_BASIS,
+        analysis_item_ids: [],
+        location: "도면 전체",
+        what: "기하공차: 문제지에서 요구했는데 도면에서 공차 값을 찾지 못했어요.",
+        why: "문제지 조립 정보에 기하공차가 있는데 도면에 0.01 같은 공차 값 글자가 없어요.",
+        evidence: `문제지 "${sheet.geometric}", 도면에 0.0xx 형태의 글자 없음`,
+        confidence: "낮음",
+        confidence_reason: "공차 값을 글자(0.011 등)로만 찾아요. 그림이나 다른 표기면 놓칠 수 있어요.",
+        how_to_resolve: "필요한 기하공차 기호와 값을 넣어 주세요.",
+        next_check: "원본 도면에서 기하공차 틀(공차 기호·값·데이텀)이 있는지 확인해 주세요.",
+      });
+    }
+  }
+  return result;
 }
 
 // ── 문제지 부품 자리의 표면 거칠기 기호 ──────────────────────────
@@ -711,7 +797,7 @@ export function reviewCodeReadAnalysis(analysis, { problemSheet = null } = {}) {
       "코드 점검은 5가지 규칙만 봐요: ① 가로 직렬 치수 합계와 전체 치수(틀리면 그려진 길이로 어느 치수가 다른지 추정), ② 같은 끼워맞춤 기호(예: k6)가 붙은 지름 치수와 주석, ③ 키홈 폭 주석끼리, ④ N9·P9 키홈 폭 글자와 그려진 폭(가로 치수로 구한 축척 사용), ⑤ 기하공차가 참조하는 데이텀이 도면에 있는지.",
       "세로 치수, 지시선이 가리키는 대상, 설계 의도, 규격(KS) 적합성은 코드로 보지 않아요. 필요하면 ‘피드백 받기’로 ③ 검토를 이어서 받으세요.",
       "같은 부위인지 확실하지 않으면 '확인 필요'(노랑)로 남겼어요. 결과는 사람이 원본 도면과 직접 비교해야 해요.",
-      ...(problemSheet ? [`문제지(${problemSheet.fileName || "선택한 파일"})의 '조립 정보' 표 글자와도 대조했어요. 문제지에 적힌 부품 자리에는 w·x·y·z 표면 거칠기 글자가 근처에 있는지도 봐요. 조립도 그림과 기하공차가 빠졌는지는 코드로 보지 않아요.`] : []),
+      ...(problemSheet ? [`문제지(${problemSheet.fileName || "선택한 파일"})의 '조립 정보' 표 글자와도 대조했어요. 문제지에 적힌 부품 자리에는 w·x·y·z 표면 거칠기 글자가 근처에 있는지, 키홈 깊이와 기하공차 값 글자가 있는지도 봐요. 조립도 그림과 공차 값이 맞는지는 코드로 보지 않아요.`] : []),
       "끼워맞춤 지름 구간에 들어가는 부품이 도면에 없으면 추측하지 않고 '질문'(파랑)으로 물어봐요. 답은 이 화면에만 기록되고 아직 추가 점검에는 쓰지 않아요.",
     ],
     human_review_status: "미확인",

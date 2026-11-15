@@ -21,11 +21,13 @@
 <script>
 const challenge = new URLSearchParams(location.search).get("variant") === "challenge";
 
-// 의도한 틀린 곳(비교 도면만): 몸통 길이 치수, 풀리 자리 끼워맞춤, 단면 키홈 폭, 오일실 자리 거칠기 기호 빠짐
+// 의도한 틀린 곳(비교 도면만): 몸통 길이 치수, 풀리 자리 끼워맞춤, 단면 키홈 폭, 오일실 자리 거칠기 기호 빠짐, 키홈 깊이, 원주 흔들림 공차 빠짐
 const BODY_LENGTH_TEXT = challenge ? "42" : "44";
 const PULLEY_FIT = challenge ? "Ø14k6" : "Ø14h6";
 const SECTION_KEY_WIDTH = challenge ? "6" : "5";
 const SEAL_ROUGHNESS = !challenge;
+const KEY_DEPTH_TEXT = challenge ? "12" : "11";
+const RUNOUT_FRAME = !challenge;
 
 const svg = document.getElementById("sheet");
 const NS = "http://www.w3.org/2000/svg";
@@ -164,7 +166,7 @@ function runout(x, fromY, value) {
   text(x + 7, fy - 1.2, value, 3.2);
   text(x + 19, fy - 1.2, "A-B", 3.2);
 }
-runout(edges[4] + 2, AXIS + 7, "0.011");
+if (RUNOUT_FRAME) runout(edges[4] + 2, AXIS + 7, "0.011");
 
 // 길이 치수: 직렬 치수 + 전체 길이
 const chainY = AXIS + 30, overallY = AXIS + 40;
@@ -218,7 +220,7 @@ text(START + 12, AXIS - 33, "( x  y )", 3.2);
   arrow(sideX, bottomKey, -Math.PI / 2);
   arrow(sideX, cy + r, Math.PI / 2);
   const middle = (bottomKey + cy + r) / 2;
-  text(sideX - 1, middle, "11", 3.5, { "text-anchor": "middle", transform: `rotate(-90 ${sideX - 1} ${middle})` });
+  text(sideX - 1, middle, KEY_DEPTH_TEXT, 3.5, { "text-anchor": "middle", transform: `rotate(-90 ${sideX - 1} ${middle})` });
   text(cx, cy + r + 10, "A-A", 4, { "text-anchor": "middle" });
 }
 
