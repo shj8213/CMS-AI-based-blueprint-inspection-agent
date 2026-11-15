@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>V벨트 전동장치 연습 문제지(기능사 양식, 가상)</title>
+<!--
+  vbelt-shaft-exam-style.html 축 도면과 짝을 이루는 가상 실기 연습 문제지예요.
+  기능사 문제지의 일반적인 구성(본체·베어링·커버·오일실·V벨트 풀리·키·너트 조립도, 부품표)을 참고해 새로 그렸고,
+  실제 기출 문제지나 공개 도면을 옮기지 않았어요. 조립도는 단순한 개략도예요.
+  오른쪽 '조립 정보' 표는 실제 문제지에는 없고, 홈페이지가 코드로 도면과 대조하도록 팀이 정한 형식이에요.
+  PDF는 tools/make_exam_style_drawings.py 로 만들어요.
+-->
+<style>
+  @page { size: 420mm 297mm; margin: 0; }
+  html, body { margin: 0; padding: 0; }
+  svg { display: block; width: 420mm; height: 297mm; }
+  text { font-family: "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans CJK KR", sans-serif; fill: #000; }
+</style>
+</head>
+<body>
+<svg id="sheet" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 297"></svg>
+<script>
+const svg = document.getElementById("sheet");
+const NS = "http://www.w3.org/2000/svg";
+function add(tag, attrs, text) {
+  const node = document.createElementNS(NS, tag);
+  for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
+  if (text !== undefined) node.textContent = text;
+  svg.appendChild(node);
+  return node;
+}
+const THICK = 0.5, THIN = 0.25;
+const line = (x1, y1, x2, y2, width = THIN, extra = {}) => add("line", { x1, y1, x2, y2, stroke: "#000", "stroke-width": width, ...extra });
+const text = (x, y, value, size = 3.5, extra = {}) => add("text", { x, y, "font-size": size, ...extra }, value);
+const centerLine = (x1, y1, x2, y2) => line(x1, y1, x2, y2, 0.18, { "stroke-dasharray": "6 1.5 1 1.5" });
+
+add("rect", { x: 10, y: 10, width: 400, height: 277, fill: "none", stroke: "#000", "stroke-width": 0.7 });
+
+// ── 제목·요구사항 ─────────────────────────────────────────────────
+text(22, 24, "실기 연습 문제지(가상) · V벨트 전동장치", 6);
+[
+  "요구사항",
+  "1. 조립도의 품번 2 축의 부품도를 3각법, 척도 1:1로 그리시오.",
+  "2. 끼워맞춤 공차, 기하공차, 표면 거칠기 기호를 기입하시오.",
+  "3. 키홈은 평행 키(품번 8)에 맞게 그리시오.",
+  "※ 팀 연습용 가상 문제지예요(실제 기출 문제 아님).",
+].forEach((value, index) => text(22, 36 + index * 6, value, index === 0 ? 4 : 3.4));
+
+// ── 조립도(개략 단면, 1.5배) ─────────────────────────────────────
+// u: 축 왼쪽 끝에서 오른쪽으로 잰 길이(mm), r: 축 중심에서 잰 반지름(mm)
+const S = 1.5, X0 = 55, AXIS = 165;
+const X = (u) => X0 + u * S;
+const ry = (r, sign) => AXIS - sign * r * S;
+function mirrored(draw) { draw(1); draw(-1); }
+function box(u0, u1, r0, r1, sign, width = THICK) {
+  const top = Math.min(ry(r0, sign), ry(r1, sign));
+  add("rect", { x: X(u0), y: top, width: (u1 - u0) * S, height: Math.abs(ry(r1, sign) - ry(r0, sign)), fill: "none", stroke: "#000", "stroke-width": width });
+  return top;
+}
+let clipCount = 0;
+function hatch(u0, u1, r0, r1, sign) {
+  const id = `hatch-${clipCount += 1}`;
+  const top = Math.min(ry(r0, sign), ry(r1, sign));
+  const height = Math.abs(ry(r1, sign) - ry(r0, sign));
+  const clip = add("clipPath", { id });
+  const shape = document.createElementNS(NS, "rect");
+  Object.entries({ x: X(u0), y: top, width: (u1 - u0) * S, height }).forEach(([key, value]) => shape.setAttribute(key, value));
+  clip.appendChild(shape);
+  for (let x = X(u0) - height; x <= X(u1); x += 2.2) line(x, top + height, x + height, top, 0.15, { "clip-path": `url(#${id})` });
+}
+
+// 축(품번 2): [지름, 길이]. 마지막 구간은 M12 나사.
+const SEGMENTS = [[17, 13], [22, 44], [17, 13], [16, 15], [14, 24], [12, 14]];
+const edges = [0];
+for (const [, length] of SEGMENTS) edges.push(edges.at(-1) + length);
+mirrored((sign) => {
+  const points = [];
+  SEGMENTS.forEach(([diameter], index) => points.push([X(edges[index]), ry(diameter / 2, sign)], [X(edges[index + 1]), ry(diameter / 2, sign)]));
+  add("polyline", { points: points.map((p) => p.join(",")).join(" "), fill: "none", stroke: "#000", "stroke-width": THICK });
+  line(X(edges[5]), ry(5.1, sign), X(edges[6]), ry(5.1, sign), 0.18);
+});
+line(X(0), ry(8.5, 1), X(0), ry(8.5, -1), THICK);
+line(X(edges[6]), ry(6, 1), X(edges[6]), ry(6, -1), THICK);
+centerLine(X(-16), AXIS, X(edges[6] + 10), AXIS);
+
+// 본체(품번 1): 양쪽 베어링 자리 + 바깥 벽 + 받침
+mirrored((sign) => {
+  box(0, 13, 20, 30, sign); hatch(0, 13, 20, 30, sign);
+  box(57, 70, 20, 30, sign); hatch(57, 70, 20, 30, sign);
+  box(0, 70, 30, 34, sign); hatch(0, 70, 30, 34, sign);
+});
+box(-12, 82, 34, 40, -1); hatch(-12, 82, 34, 40, -1);
+line(X(-6), ry(40, -1), X(-6), ry(34, -1), 0.18, { "stroke-dasharray": "2 1" });
+line(X(76), ry(40, -1), X(76), ry(34, -1), 0.18, { "stroke-dasharray": "2 1" });
+
+// 베어링 6203(품번 6): 바깥 사각형 + 볼
+function bearing(u0, u1) {
+  mirrored((sign) => {
+    box(u0, u1, 8.5, 20, sign);
+    add("circle", { cx: X((u0 + u1) / 2), cy: ry(14.25, sign), r: 3.6 * S, fill: "none", stroke: "#000", "stroke-width": THIN });
+  });
+}
+bearing(0.5, 12.5);
+bearing(57.5, 69.5);
+
+// 왼쪽 커버(품번 3): 막힌 뚜껑과 볼트
+mirrored((sign) => {
+  box(-6, 0, 0, 34, sign); hatch(-6, 0, 0, 34, sign);
+  box(-8, -6, 30, 32.5, sign, THIN);
+});
+// 오른쪽 커버(품번 4)와 오일실(품번 7)
+mirrored((sign) => {
+  box(70, 78, 15, 34, sign); hatch(70, 78, 15, 34, sign);
+  box(78, 80, 30, 32.5, sign, THIN);
+  box(71, 77, 8, 15, sign, THIN);
+  line(X(71), ry(8, sign), X(77), ry(15, sign), THIN);
+});
+
+// V벨트 풀리(품번 5): 보스·웨브·림
+mirrored((sign) => {
+  box(85, 109, 7, 14, sign); hatch(85, 109, 7, 14, sign);
+  box(93, 101, 14, 26, sign); hatch(93, 101, 14, 26, sign);
+  const rim = [[88, 26], [88, 36], [92, 36], [95.5, 29], [98.5, 29], [102, 36], [106, 36], [106, 26]];
+  add("polyline", { points: rim.map(([u, r]) => [X(u), ry(r, sign)].join(",")).join(" "), fill: "none", stroke: "#000", "stroke-width": THICK });
+});
+// 평행 키(품번 8)
+box(90, 105, 4, 9, 1, THIN);
+// 와셔·너트(품번 9)
+mirrored((sign) => {
+  box(109, 111, 6, 12, sign, THIN);
+  box(111, 120, 6, 10.5, sign);
+});
+
+// 품번 풍선
+function balloon(number, fromX, fromY, cx, cy) {
+  const dy = cy - fromY, dx = cx - fromX, length = Math.hypot(dx, dy);
+  line(fromX, fromY, cx - dx / length * 5, cy - dy / length * 5, THIN);
+  add("circle", { cx: fromX, cy: fromY, r: 0.6, fill: "#000" });
+  add("circle", { cx, cy, r: 5, fill: "none", stroke: "#000", "stroke-width": THIN });
+  text(cx, cy + 1.3, String(number), 4, { "text-anchor": "middle" });
+}
+balloon(1, X(35), ry(32, 1), X(35), 92);
+balloon(2, X(40), ry(9, -1), X(40), 228);
+balloon(3, X(-3), ry(20, 1), X(-14), 100);
+balloon(4, X(74), ry(25, 1), X(70), 92);
+balloon(5, X(97), ry(31, 1), X(104), 92);
+balloon(6, X(6.5), ry(14.25, -1), X(10), 228);
+balloon(7, X(74), ry(12, -1), X(76), 228);
+balloon(8, X(97.5), ry(7, 1), X(124), 108);
+balloon(9, X(115), ry(9, -1), X(128), 222);
+text(X(45), 270, "조립도(개략 단면, 척도 NS)", 4, { "text-anchor": "middle" });
+
+// ── 부품표 ───────────────────────────────────────────────────────
+{
+  const x0 = 270, x1 = 410, rowH = 6.5;
+  const cols = [x0, 282, 330, 368, x1];
+  const rows = [
+    ["9", "육각 너트 M12", "SM20C", "1"],
+    ["8", "평행 키 5×5", "SM45C", "1"],
+    ["7", "오일실", "NBR", "1"],
+    ["6", "베어링 6203", "-", "2"],
+    ["5", "V벨트 풀리", "GC200", "1"],
+    ["4", "커버(오른쪽)", "GC200", "1"],
+    ["3", "커버(왼쪽)", "GC200", "1"],
+    ["2", "축", "SM45C", "1"],
+    ["1", "본체", "GC200", "1"],
+    ["품번", "품 명", "재 질", "수량"],
+  ];
+  const top0 = 287 - rows.length * rowH;
+  rows.forEach((cells, rowIndex) => {
+    const top = top0 + rowIndex * rowH;
+    add("rect", { x: x0, y: top, width: x1 - x0, height: rowH, fill: "none", stroke: "#000", "stroke-width": THIN });
+    cells.forEach((cell, index) => {
+      if (index > 0) line(cols[index], top, cols[index], top + rowH, THIN);
+      text((cols[index] + cols[index + 1]) / 2, top + 4.6, cell, 3.2, { "text-anchor": "middle" });
+    });
+  });
+}
+
+// ── 조립 정보(팀 코드 대조용) ─────────────────────────────────────
+{
+  const x = 275, y = 132, gap = 7;
+  add("rect", { x: 270, y: 120, width: 140, height: 104, fill: "none", stroke: "#000", "stroke-width": THIN });
+  [
+    "조립 정보(팀 코드 대조용)",
+    "Ø17 k6 : 베어링 6203 (왼쪽·오른쪽)",
+    "Ø16 : 오일실 (오른쪽 커버 안)",
+    "Ø14 h6 : V벨트 풀리 (평행 키)",
+    "키홈 폭 5",
+    "키홈 깊이 11",
+    "기하공차 : 풀리 자리 원주 흔들림",
+    "축 전체 길이 123",
+    "※ 실제 문제지에는 없는 표예요.",
+    "   홈페이지가 도면 글자와 비교해요.",
+  ].forEach((value, index) => text(x, y + index * gap + (index === 0 ? 0 : 3), value, index === 0 ? 4 : 3.5));
+}
+</script>
+</body>
+</html>

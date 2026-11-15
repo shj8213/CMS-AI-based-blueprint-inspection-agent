@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>축 연습 문제지(기능사 양식, 가상)</title>
+<!--
+  shaft-exam-style.html 축 도면과 짝을 이루는 가상 실기 연습 문제지예요.
+  실제 기출 문제지를 옮기지 않았고, 조립도는 단순하게 그린 개략도예요.
+  오른쪽 아래 '조립 정보' 표는 실제 문제지에는 없고, 홈페이지가 코드로 도면과 대조하도록 팀이 정한 형식이에요.
+  PDF는 tools/make_exam_style_drawings.py 로 만들어요.
+-->
+<style>
+  @page { size: 420mm 297mm; margin: 0; }
+  html, body { margin: 0; padding: 0; }
+  svg { display: block; width: 420mm; height: 297mm; }
+  text { font-family: "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans CJK KR", sans-serif; fill: #000; }
+</style>
+</head>
+<body>
+<svg id="sheet" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 297"></svg>
+<script>
+const svg = document.getElementById("sheet");
+const NS = "http://www.w3.org/2000/svg";
+function add(tag, attrs, text) {
+  const node = document.createElementNS(NS, tag);
+  for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
+  if (text !== undefined) node.textContent = text;
+  svg.appendChild(node);
+  return node;
+}
+const THICK = 0.5, THIN = 0.25;
+const line = (x1, y1, x2, y2, width = THIN, extra = {}) => add("line", { x1, y1, x2, y2, stroke: "#000", "stroke-width": width, ...extra });
+const text = (x, y, value, size = 3.5, extra = {}) => add("text", { x, y, "font-size": size, ...extra }, value);
+const rect = (x, y, width, height, width2 = THICK) => add("rect", { x, y, width, height, fill: "none", stroke: "#000", "stroke-width": width2 });
+const centerLine = (x1, y1, x2, y2) => line(x1, y1, x2, y2, 0.18, { "stroke-dasharray": "6 1.5 1 1.5" });
+
+add("rect", { x: 10, y: 10, width: 400, height: 277, fill: "none", stroke: "#000", "stroke-width": 0.7 });
+
+// ── 제목·요구사항 ─────────────────────────────────────────────────
+text(22, 24, "실기 연습 문제지(가상) · 기능사 양식", 6);
+{
+  const lines = [
+    "요구사항",
+    "1. 조립도의 품번 1 축의 부품도를 3각법, 척도 1:1로 그리시오.",
+    "2. 끼워맞춤 공차, 기하공차, 표면 거칠기 기호를 기입하시오.",
+    "3. 키홈은 평행 키(품번 5)에 맞게 그리시오.",
+    "※ 팀 연습용 가상 문제지예요(실제 기출 문제 아님).",
+  ];
+  lines.forEach((value, index) => text(22, 36 + index * 6, value, index === 0 ? 4 : 3.4));
+}
+
+// ── 조립도(개략, 1.4배) ──────────────────────────────────
+const S = 1.4, X0 = 80, AXIS = 160;
+const X = (u) => X0 + u * S;
+const Y = (r) => AXIS - r * S;
+const SEGMENTS = [[20, 18], [26, 12], [22, 45], [20, 18], [16, 25]];
+const edges = [0];
+for (const [, length] of SEGMENTS) edges.push(edges.at(-1) + length);
+
+function mirrored(draw) { draw(1); draw(-1); }
+const ry = (r, sign) => AXIS - sign * r * S;
+
+// 축(품번 1)
+mirrored((sign) => {
+  const points = [];
+  SEGMENTS.forEach(([diameter], index) => {
+    points.push([X(edges[index]), ry(diameter / 2, sign)], [X(edges[index + 1]), ry(diameter / 2, sign)]);
+  });
+  add("polyline", { points: points.map((p) => p.join(",")).join(" "), fill: "none", stroke: "#000", "stroke-width": THICK });
+});
+line(X(0), ry(10, 1), X(0), ry(10, -1), THICK);
+line(X(118), ry(8, 1), X(118), ry(8, -1), THICK);
+centerLine(X(-12), AXIS, X(132), AXIS);
+
+// 베어링(품번 2): 단순 표시(사각형 + 대각선)
+function bearing(u0, u1) {
+  mirrored((sign) => {
+    const top = Math.min(ry(10, sign), ry(23.5, sign));
+    const height = Math.abs(ry(23.5, sign) - ry(10, sign));
+    rect(X(u0), top, (u1 - u0) * S, height);
+    line(X(u0), top, X(u1), top + height);
+    line(X(u1), top, X(u0), top + height);
+  });
+}
+bearing(2, 16);
+bearing(77, 91);
+
+// 스퍼 기어(품번 3)와 평행 키(품번 5)
+mirrored((sign) => {
+  const top = Math.min(ry(11, sign), ry(40, sign));
+  rect(X(38), top, 30 * S, Math.abs(ry(40, sign) - ry(11, sign)));
+  line(X(38), ry(37, sign), X(68), ry(37, sign), 0.18, { "stroke-dasharray": "6 1.5 1 1.5" });
+});
+rect(X(38), Y(14), 28 * S, 3 * S, THIN);
+
+// V벨트 풀리(품번 4)
+mirrored((sign) => {
+  const hubTop = Math.min(ry(8, sign), ry(16, sign));
+  rect(X(95), hubTop, 22 * S, Math.abs(ry(16, sign) - ry(8, sign)));
+  const rim = [[X(97), ry(16, sign)], [X(97), ry(34, sign)], [X(102), ry(34, sign)], [X(104.5), ry(27, sign)],
+    [X(107.5), ry(27, sign)], [X(110), ry(34, sign)], [X(115), ry(34, sign)], [X(115), ry(16, sign)]];
+  add("polyline", { points: rim.map((p) => p.join(",")).join(" "), fill: "none", stroke: "#000", "stroke-width": THICK });
+});
+
+// 본체(품번 6): 양쪽 벽과 위·아래 판
+mirrored((sign) => {
+  const wall = (u0, u1) => rect(X(u0), Math.min(ry(23.5, sign), ry(50, sign)), (u1 - u0) * S, Math.abs(ry(50, sign) - ry(23.5, sign)));
+  wall(-4, 2);
+  wall(16, 20);
+  wall(73, 77);
+  wall(91, 93);
+  rect(X(-4), Math.min(ry(50, sign), ry(56, sign)), 97 * S, 6 * S);
+});
+
+// 품번 풍선
+function balloon(number, fromX, fromY, cx, cy) {
+  line(fromX, fromY, cx, cy + (cy > fromY ? -5 : 5), THIN);
+  add("circle", { cx: fromX, cy: fromY, r: 0.6, fill: "#000" });
+  add("circle", { cx, cy, r: 5, fill: "none", stroke: "#000", "stroke-width": THIN });
+  text(cx, cy + 1.3, String(number), 4, { "text-anchor": "middle" });
+}
+balloon(1, X(26), ry(13, -1) + 1, X(26), 226);
+balloon(2, X(9), ry(18, 1), X(9), 70);
+balloon(3, X(53), ry(30, 1), X(53), 70);
+balloon(4, X(106), ry(31, 1), X(122), 70);
+balloon(5, X(64), Y(12.5), X(80), 70);
+balloon(6, X(40), ry(53, -1), X(40), 256);
+text(X(40), 276, "조립도(개략도, 척도 NS)", 4, { "text-anchor": "middle" });
+
+// ── 부품표 ───────────────────────────────────────────────────────
+{
+  const x0 = 270, x1 = 410, rowH = 7;
+  const cols = [x0, 282, 325, 362, x1];
+  const rows = [
+    ["6", "본체", "GC200", "1"],
+    ["5", "평행 키 6×6", "SM45C", "1"],
+    ["4", "V벨트 풀리", "GC200", "1"],
+    ["3", "스퍼 기어", "SC480", "1"],
+    ["2", "베어링 6204", "-", "2"],
+    ["1", "축", "SM45C", "1"],
+    ["품번", "품 명", "재 질", "수량"],
+  ];
+  const top0 = 287 - rows.length * rowH;
+  rows.forEach((cells, rowIndex) => {
+    const top = top0 + rowIndex * rowH;
+    rect(x0, top, x1 - x0, rowH, THIN);
+    cells.forEach((cell, index) => {
+      if (index > 0) line(cols[index], top, cols[index], top + rowH, THIN);
+      text((cols[index] + cols[index + 1]) / 2, top + 5, cell, 3.2, { "text-anchor": "middle" });
+    });
+  });
+}
+
+// ── 조립 정보(팀 코드 대조용) ─────────────────────────────────────
+{
+  const x = 275, y = 140, gap = 7;
+  rect(270, 128, 140, 96, THIN);
+  const lines = [
+    "조립 정보(팀 코드 대조용)",
+    "Ø20 k6 : 베어링 6204 (왼쪽·오른쪽)",
+    "Ø22 m6 : 스퍼 기어 (평행 키)",
+    "Ø16 h6 : V벨트 풀리",
+    "키홈 폭 6",
+    "축 전체 길이 118",
+    "※ 실제 문제지에는 없는 표예요.",
+    "   홈페이지가 도면 글자와 비교해요.",
+  ];
+  lines.forEach((value, index) => text(x, y + index * gap + (index === 0 ? 0 : 3), value, index === 0 ? 4 : 3.5));
+}
+</script>
+</body>
+</html>
