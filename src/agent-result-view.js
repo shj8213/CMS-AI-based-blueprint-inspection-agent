@@ -458,6 +458,8 @@ async function renderFeedbackDrawing(review, analysis, coordinateMarkers, file, 
     markers = mergeOverlappingMarkers(buildFeedbackMarkers(review, analysis, pdfPages));
     const pageNumbers = [...new Set(markers.flatMap((marker) => marker.placements.map((item) => item.page)))]
       .sort((a, b) => a - b);
+    // 표시할 위치가 하나도 없어도 원본 도면은 보이도록 첫 페이지를 그려요.
+    if (!pageNumbers.length) pageNumbers.push(wanted[0] ?? 1);
     if (pageNumbers.length) status.textContent = "도면 그림을 준비하는 중이에요…";
     for (const number of pageNumbers) {
       const page = await pdf.render(number, DRAWING_RENDER_WIDTH);
