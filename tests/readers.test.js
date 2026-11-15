@@ -10,6 +10,7 @@ import {
 } from "../src/agent-input.js";
 import { mergeCodeReview, ProblemSheetError, readProblemSheet, reviewCodeReadAnalysis } from "../src/code-review.js";
 import { readDxf } from "../src/dxf.js";
+import { installMapPolyfill, installModernApiPolyfill } from "../src/map-polyfill.js";
 import { partGuidance, roughnessAdvice } from "../src/part-guidance.js";
 import { readPdf } from "../src/pdf.js";
 import { inferCircle, multiply, transform } from "../src/geometry.js";
@@ -1269,8 +1270,8 @@ agentTest("도면 위 표시: 좌표가 확실한 피드백만 페이지별 빨�
   const markers = buildFeedbackMarkers(review, analysis);
   assert(JSON.stringify(analysis) === before, "② 결과를 바꾸면 안 돼요.");
   assert(markers.map((marker) => marker.number).join() === "1,2,3,4,5,6,7");
-  assert(markers[0].color === "tone-red" && markers[0].symbol === "!", "틀림은 빨강·! 이어야 해요.");
-  assert(markers[1].color === "tone-yellow" && markers[1].symbol === "?", "확인 필요는 노랑·? 이어야 해요.");
+  assert(markers[0].color === "tone-red" && !("symbol" in markers[0]), "틀림은 빨강이고 기호는 없어야 해요.");
+  assert(markers[1].color === "tone-yellow" && !("symbol" in markers[1]), "확인 필요는 노랑이고 기호는 없어야 해요.");
   const first = markers[0].placements[0];
   assert(first.page === 1 && Math.abs(first.x - 80 / 300) < 1e-9 && Math.abs(first.y - 30 / 240) < 1e-9, JSON.stringify(first));
   assert(first.radius > 0.2 && first.radius < 0.3, `범위를 감싸는 반지름이어야 해요: ${first.radius}`);
@@ -1424,12 +1425,12 @@ agentTest("화면: ③ 피드백 동그라미를 해당 페이지 도면 위에 
     assert(pages.join() === "1페이지,2페이지", pages.join());
     const marker = (number) => app.querySelector(`.feedback-marker[data-finding-number="${number}"]`);
     const [red, yellow, byText] = [marker(1), marker(2), marker(4)];
-    assert(red.classList.contains("tone-red") && red.textContent === "1!" && red.closest(".review-drawing-page").textContent.includes("1페이지"));
-    assert(yellow.classList.contains("tone-yellow") && yellow.textContent === "2?" && yellow.closest(".review-drawing-page").textContent.includes("2페이지"));
+    assert(red.classList.contains("tone-red") && red.textContent === "1" && red.closest(".review-drawing-page").textContent.includes("1페이지"));
+    assert(yellow.classList.contains("tone-yellow") && yellow.textContent === "2" && yellow.closest(".review-drawing-page").textContent.includes("2페이지"));
     const cards = app.querySelectorAll("#review-agent-findings .review-finding");
     assert(cards[2].textContent.includes("위치 확인 필요") && cards[2].querySelector(".finding-locate").hidden);
     assert(cards[0].textContent.includes("도면 표시: 1페이지") && cards[0].textContent.includes("좌표"));
-    assert(byText.dataset.source === "text" && byText.textContent === "4!" && byText.closest(".review-drawing-page").textContent.includes("1페이지"));
+    assert(byText.dataset.source === "text" && byText.textContent === "4" && byText.closest(".review-drawing-page").textContent.includes("1페이지"));
     // "Hello blueprint"는 (20, 50)에서 시작하는 글자라 동그라미가 그 오른쪽 위쪽에 있어야 해요.
     assert(parseFloat(byText.style.left) > 20 / 300 * 100 && parseFloat(byText.style.top) < 50 / 240 * 100 && parseFloat(byText.style.top) > 20 / 240 * 100,
       `${byText.style.left} ${byText.style.top}`);
@@ -2036,6 +2037,30 @@ agentTest("검토 기억: 서로 다른 도면 2곳 이상에서 반복된 지�
   const text = combineMemoryText(null, lessons);
   assert(text.includes("자주 반복된 지적 유형") && text.includes("2개 도면") && !text.includes("이전 지적 요약"));
   assert(!/가상-축-예제|Ø20h7/.test(text), "파일 이름과 치수 값은 보내면 안 돼요.");
+});
+
+test("브라우저 호환: Map·WeakMap에 getOrInsert 계열이 없어도 같은 동작으로 채움", async () => {
+  // 기능이 없는 옛 브라우저를 흉내 내요(진짜 Map을 건드리지 않아요).
+  const fake = () => class { constructor() { this.items = new Map(); } has(k) { return this.items.has(k); } get(k) { return this.items.get(k); } set(k, v) { this.items.set(k, v); return this; } };
+  const scope = { Map: fake(), WeakMap: fake() };
+  installMapPolyfill(scope);
+  for (const Kind of [scope.Map, scope.WeakMap]) {
+    const map = new Kind();
+    let calls = 0;
+    assert(map.getOrInsertComputed("a", () => { calls += 1; return 1; }) === 1);
+    map.getOrInsertComputed("a", () => { calls += 1; return 2; });
+    assert(calls === 1 && map.getOrInsert("b", 5) === 5 && map.getOrInsert("b", 9) === 5, "없을 때만 넣어야 해요.");
+  }
+});
+
+test("브라우저 호환: Promise.try·Math.sumPrecise·URL.parse가 없어도 채움", async () => {
+  const scope = { Promise: class extends Promise {}, Math: {}, URL: class { constructor(u) { if (u === "bad") throw new TypeError("x"); this.href = u; } } };
+  installModernApiPolyfill(scope);
+  assert(await scope.Promise.try((a, b) => a + b, 1, 2) === 3);
+  assert(scope.Math.sumPrecise([1, 2, 3.5]) === 6.5);
+  assert(scope.URL.parse("bad") === null && scope.URL.parse("ok").href === "ok");
+  const r = scope.Promise.withResolvers(); r.resolve(4);
+  assert(await r.promise === 4);
 });
 
 agentTest("거칠기 누락 안내: 베어링은 y와 이유를, 그 밖의 부품은 기호를 지어내지 않고 확인 방법을 안내", async () => {

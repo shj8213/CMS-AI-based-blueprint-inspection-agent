@@ -1,3 +1,4 @@
+import "./map-polyfill.js";
 import { IDENTITY, inferCircle, multiply, transform } from "./geometry.js";
 import { detectScanGeometry, pageScaleForScan } from "./scan.js";
 
@@ -14,7 +15,7 @@ async function loadLibrary() {
     throw new Error("PDF 읽기 도구를 불러오지 못했어요. README의 준비 명령을 실행한 뒤 다시 시도해 주세요.", { cause: error });
   });
   const library = await libraryPromise;
-  library.GlobalWorkerOptions.workerSrc = new URL(`../vendor/pdfjs/build/pdf.worker.mjs?v=${PDFJS_VERSION}`, import.meta.url).href;
+  library.GlobalWorkerOptions.workerSrc = new URL(`./pdf-worker.js?v=${PDFJS_VERSION}`, import.meta.url).href;
   return library;
 }
 
