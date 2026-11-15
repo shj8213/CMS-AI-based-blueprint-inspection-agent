@@ -1431,6 +1431,38 @@ agentTest("화면: ③ 연결 실패 뒤에도 ② 분석을 열고 다시 요�
   }
 });
 
+agentTest("화면: 도면 분석하기 — 스캔 PDF는 동의가 없으면 안내만, 동의하면 ② 분석으로 넘어감", async () => {
+  if (!app) await openApp();
+  await selectFile("scan.pdf");
+  const analysis = `총 분석\n스캔 ② 응답\n\n\`\`\`json\n${await agentFixture()}\n\`\`\``;
+  const mock = studioMock({
+    reviewerTokenEndpoint: null,
+    activityPages: [{ activities: [
+      { id: "analysis-answer", type: "message", replyToId: "sent-1", text: analysis },
+      { type: "event", name: "turn.complete", replyToId: "sent-1" },
+    ] }],
+  });
+  const originalFetch = frame.contentWindow.fetch;
+  frame.contentWindow.fetch = mock.fetchImpl;
+  try {
+    const consent = app.querySelector("#reviewer-consent");
+    const button = app.querySelector("#code-read-button");
+    if (consent.checked) consent.click();
+    button.click();
+    await waitFor(() => app.querySelector("#read-error").textContent.includes("스캔"), "스캔 안내가 나오지 않았어요.");
+    await waitFor(() => app.querySelector("#upload-screen").getAttribute("aria-busy") === "false", "읽기가 끝나지 않았어요.");
+    assert(!mock.requests.some(({ url }) => url.pathname.endsWith("/upload")), "동의 없이는 아무것도 보내면 안 돼요.");
+    consent.click();
+    button.click();
+    await waitFor(() => !app.querySelector("#review-screen").hidden, () => app.querySelector("#read-error").textContent || "② 분석으로 넘어가지 않았어요.");
+    assert(app.querySelector("#agent-result-panel").textContent.includes("스캔 ② 응답"));
+    assert(mock.requests.filter(({ url }) => url.pathname.endsWith("/upload")).length === 1);
+  } finally {
+    frame.contentWindow.fetch = originalFetch;
+    if (!app.querySelector("#review-screen").hidden) app.querySelector("#back-button").click();
+  }
+});
+
 agentTest("공개 자동 연결: 호스트 설정·확인 절차·요청 제한 뒤 임시 연결 토큰 제공", async () => {
   const analysisEndpoint = "https://tenant.environment.api.powerplatform.com/powervirtualagents/botsbyschema/analyzer/directline/token?api-version=2022-03-01-preview";
   const reviewerEndpoint = "https://tenant.environment.api.powerplatform.com/powervirtualagents/botsbyschema/reviewer/directline/token?api-version=2022-03-01-preview";
