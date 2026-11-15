@@ -2209,6 +2209,7 @@ test("V벨트 기출형 연습: 비교본의 숨긴 틀림 6개(문제지 없이
   const rough = issues.find((finding) => finding.what.includes("표면 거칠기"));
   assert(rough?.classification === "확인 필요" && rough.what.startsWith("Ø16") && rough.what.includes("오일실"), rough?.what);
   assert(issues.filter((finding) => finding.what.includes("거칠기")).length === 1, JSON.stringify(issues.map((finding) => finding.what)));
+  assert(!issues.some((finding) => finding.what.includes("서로 다른 지름")), "문제지로 확정된 뒤에는 중복 노랑 카드가 없어야 해요.");
   const depth = issues.find((finding) => finding.what.startsWith("키홈 깊이"));
   assert(depth?.classification === "틀림" && depth.what.includes("11") && depth.what.includes("12"), depth?.what);
   const runout = issues.find((finding) => finding.what.startsWith("기하공차"));

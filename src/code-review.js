@@ -505,6 +505,13 @@ function compareWithSheet(sheet, texts, rows, dimensions, findings) {
       });
       // 부품은 문제지로 알았으니 같은 구간 질문은 다시 하지 않아요.
       for (const entry of same) answered.add(`${format(entry.size)}${entry.fit}`);
+      // 문제지로 틀린 곳이 확정됐으면, 같은 글자를 가리키는 "같은 기호가 여러 지름" 확인 카드는 중복이라 빼요.
+      const sameFits = new Set(same.map((entry) => entry.fit));
+      for (let index = findings.length - 1; index >= 0; index -= 1) {
+        const finding = findings[index];
+        if (finding.classification === "확인 필요" && finding.what.includes("서로 다른 지름")
+          && [...sameFits].some((fit) => finding.what.includes(`기호 ${fit}가`))) findings.splice(index, 1);
+      }
     } else if (same.length || plain.length) {
       if (item.fit && !same.length) {
         extra.push({
