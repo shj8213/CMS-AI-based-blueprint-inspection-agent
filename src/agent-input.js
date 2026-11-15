@@ -124,6 +124,17 @@ export const PDF_READER_SCOPE =
 const round = (value) => Math.round(value * 100) / 100;
 const roundPoint = ({ x, y }) => ({ x: round(x), y: round(y) });
 
+// 선은 많은데 글자가 거의 없으면 치수·기호가 선으로 그려진 PDF(CAD 출력 등)라 글자를 코드로 읽지 못해요.
+export const OUTLINED_TEXT_MIN_LINES = 100;
+export const OUTLINED_TEXT_MAX_TEXTS = 2;
+
+export function hasOutlinedText(result) {
+  const elements = (result?.elements ?? []).filter((element) => element.source !== "image" && element.source !== "ocr");
+  const lines = elements.filter((element) => element.kind === "line").length;
+  const texts = elements.filter((element) => element.kind === "text").length;
+  return lines >= OUTLINED_TEXT_MIN_LINES && texts <= OUTLINED_TEXT_MAX_TEXTS;
+}
+
 // 이미지가 있고 벡터 선·원이 거의 없는 페이지 번호 목록이에요. 이 페이지는 코드로 정확히 읽을 수 없어요.
 export function findScanPages(result) {
   return (result?.imagePages ?? [])

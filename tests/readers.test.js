@@ -5,6 +5,7 @@ import {
   buildPdfAgentResponse,
   DXF_REQUEST,
   findScanPages,
+  hasOutlinedText,
   isCodeReadResponse,
   PDF_CODE_READER,
 } from "../src/agent-input.js";
@@ -2232,6 +2233,15 @@ test("PDF 코드 읽기: 벡터 PDF를 ② 형식으로 바꾸고 페이지 크�
   assert(placement?.source === "coordinate", `좌표로 동그라미를 그려야 해요: ${markers[0].reason}`);
   assert(placement.x > 20 / input.pages[0].width && placement.y < 50 / input.pages[0].height, JSON.stringify(placement));
   await rejects(() => buildPdfAgentInput({ format: "DXF", elements: [], warnings: [] }), "PDF");
+});
+test("PDF 코드 읽기: 선은 많고 글자가 거의 없으면 글자가 선으로 그려진 PDF로 경고", async () => {
+  const lines = Array.from({ length: 150 }, () => ({ kind: "line" }));
+  assert(hasOutlinedText({ elements: lines }), "선만 있으면 경고해야 해요.");
+  assert(!hasOutlinedText({ elements: [...lines, ...Array.from({ length: 5 }, () => ({ kind: "text" }))] }), "글자가 있으면 경고하지 않아요.");
+  assert(!hasOutlinedText({ elements: lines.slice(0, 20) }), "선이 적으면 경고하지 않아요.");
+  assert(!hasOutlinedText({ elements: lines.map((element) => ({ ...element, source: "image" })) }));
+  const simple = await readPdf(await fixture("simple.pdf"), () => {}, { scanImages: false });
+  assert(!hasOutlinedText(simple), "글자가 있는 PDF는 경고하지 않아요.");
 });
 test("PDF 코드 읽기: 스캔 PDF는 OCR 없이 스캔 페이지로 구분하고 변환을 거부", async () => {
   const result = await readPdf(await fixture("scan.pdf"), () => {}, { scanImages: false });
