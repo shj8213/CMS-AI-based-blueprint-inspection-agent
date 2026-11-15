@@ -912,6 +912,7 @@ codeReadButton.addEventListener("click", async () => {
 });
 
 function showCodeReview(response, file, timing = "") {
+  document.querySelectorAll(".manual-check-list input").forEach((box) => { box.checked = false; });
   const codeReview = reviewCodeReadAnalysis(response, { problemSheet: problemSheetInfo });
   agentResultView.reset();
   agentResultView.showResponse(JSON.stringify(codeReview), response, file);
