@@ -516,7 +516,8 @@ async function renderFeedbackDrawing(review, analysis, coordinateMarkers, file, 
 
   finishNotes(markers, drawn, sizeMismatch);
   if (drawn.size) {
-    status.textContent = `${drawn.size}/${markers.length}개 표시 · 빨강(!) 틀림 · 노랑(?) 확인 필요 · 파랑(?) 질문 · 점선은 후보 위치`;
+    status.textContent = `${drawn.size}/${markers.length}개 표시`;
+    $("#review-drawing-legend").hidden = false;
   } else if (sizeMismatch) {
     status.textContent = "② 결과의 페이지 크기가 원본 PDF와 달라 동그라미를 그리지 않았어요.";
   } else {
@@ -789,6 +790,7 @@ export function createAgentResultView() {
     $("#review-drawing").hidden = true;
     $("#review-drawing-pages").replaceChildren();
     $("#review-drawing-status").textContent = "";
+    $("#review-drawing-legend").hidden = true;
   }
 
   function showResult(text, message, analysisText, file = null) {

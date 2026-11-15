@@ -401,6 +401,12 @@
       .finding-more { margin-top: 6px; font-size: 13px; }
       .finding-more summary { cursor: pointer; font-weight: 700; }
       .zoom-controls { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+      .marker-legend { display: grid; gap: 4px; margin: 0 0 12px; padding: 10px 12px; list-style: none; border-radius: 8px; background: #f4f6fb; font-size: 13px; color: #33415c; }
+      .marker-legend .legend-dot { display: inline-block; width: 12px; height: 12px; margin-right: 8px; vertical-align: -1px; border: 3px solid; border-radius: 50%; }
+      .marker-legend .legend-dot.tone-red { border-color: #c62828; }
+      .marker-legend .legend-dot.tone-yellow { border-color: #e0b000; }
+      .marker-legend .legend-dot.tone-blue { border-color: #1c6dd0; }
+      .marker-legend .legend-dot.candidate { border-color: #5b6b85; border-style: dashed; }
       .zoom-button { min-width: 36px; padding: 4px 10px; border: 1px solid #c3cee0; border-radius: 6px; background: #fff; font: inherit; font-size: 14px; cursor: pointer; }
       .zoom-button:disabled { opacity: .45; cursor: default; }
       .zoom-hint { font-size: 12px; color: #5b6b85; }
@@ -782,6 +788,12 @@
               <section id="review-drawing" aria-labelledby="review-drawing-title" hidden>
                 <h3 id="review-drawing-title">도면 위 피드백 위치</h3>
                 <p class="subtext" id="review-drawing-status" role="status"></p>
+                <ul class="marker-legend" id="review-drawing-legend" hidden>
+                  <li><span class="legend-dot tone-red"></span><strong>빨강 !</strong> 서로 안 맞아요. 고쳐야 해요.</li>
+                  <li><span class="legend-dot tone-yellow"></span><strong>노랑 ?</strong> 코드가 확정을 못 했어요. 직접 봐 주세요.</li>
+                  <li><span class="legend-dot tone-blue"></span><strong>파랑 ?</strong> 질문이에요. 답해 주면 더 정확해져요.</li>
+                  <li><span class="legend-dot candidate"></span><strong>점선</strong> 정확한 자리 대신 후보 위치예요.</li>
+                </ul>
                 <div id="review-drawing-pages"></div>
               </section>
               <h3>확인할 점 <span id="review-agent-finding-count"></span></h3>
