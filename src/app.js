@@ -1,7 +1,8 @@
 import { buildDxfAgentMessage, buildPdfAgentInput, buildPdfAgentResponse, findScanPages, isCodeReadResponse } from "./agent-input.js";
 import { mergeCodeReview, ProblemSheetError, readProblemSheet, reviewCodeReadAnalysis } from "./code-review.js";
 import { readDxf } from "./dxf.js";
-import { readPdf } from "./pdf.js";
+import { openPdfForFeedback, readPdf } from "./pdf.js";
+import { enhanceDrawingPixels } from "./image-enhancement.js";
 import { AgentResultError, parseAgentResult } from "./agent-result.js";
 import { createAgentResultView } from "./agent-result-view.js";
 import {
@@ -45,6 +46,8 @@ const dropArea = $("#drop-area");
 const pageSelect = $("#page-select");
 const list = $("#element-list");
 const preview = $("#drawing-preview");
+const pdfPreviewCanvas = $("#pdf-preview-canvas");
+const previewZoom = $("#preview-zoom");
 const TABLE_SIZE = 100;
 let chosenFile = null;
 let busy = false;
@@ -62,6 +65,11 @@ let hostedChallengeTimer = null;
 let hostedChallengeSignal = null;
 let activeAnalysisEntry = null;
 let activeAnalysisFile = null;
+let pdfPreviewDocument = null;
+let pdfPreviewSourceCanvas = null;
+let pdfPreviewPageNumber = null;
+let pdfPreviewRequest = 0;
+let previewMode = "simple";
 
 const number = (value) => new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 3 }).format(value);
 const point = (value) => `(${number(value.x)}, ${number(value.y)})`;
@@ -438,6 +446,7 @@ function openSaved(id, resultType = "analysis") {
 
 function showFile(file) {
   if (busy) return;
+  closePdfPreview();
   $("#read-error").textContent = "";
   $("#read-progress").textContent = "";
   reviewerConsent.checked = false;
@@ -478,6 +487,7 @@ function renderFile() {
   remove.textContent = "×";
   remove.setAttribute("aria-label", "선택한 파일 지우기");
   remove.addEventListener("click", () => {
+    closePdfPreview();
     chosenFile = null;
     reviewerConsent.checked = false;
     fileInput.value = "";
@@ -495,6 +505,17 @@ function summary(elements) {
 }
 
 function renderResult() {
+  const isPdf = result.format === "PDF";
+  previewMode = isPdf ? "enhanced" : "simple";
+  $("#preview-original").hidden = !isPdf;
+  $("#preview-enhanced").hidden = !isPdf;
+  $("#preview-enhancement-note").hidden = !isPdf;
+  $("#preview-status").textContent = "";
+  $("#preview-note").textContent = isPdf
+    ? "PDF를 열면 자동 보정 보기로 보여드려요. 원본 PDF와 전환해 비교할 수 있고, 확대 후에는 미리보기 안을 움직여 볼 수 있어요."
+    : "간략 보기는 읽어낸 DXF 요소를 다시 그려요. 확대해도 원본 DXF 파일은 바뀌지 않아요.";
+  previewZoom.value = "100";
+  updatePreviewControls();
   $("#selected-file-name").textContent = `선택한 도면: ${chosenFile.name}`;
   $("#reading-summary").textContent = `${result.format} 읽기 결과 · ${summary(result.elements)} · 도면의 정확성을 판단한 결과는 아니에요.`;
   $("#coordinate-note").textContent = result.format === "PDF"
@@ -547,6 +568,135 @@ function renderPage() {
   $("#page-summary").textContent = elements.length ? summary(elements) : "확인 필요: 이 페이지에서 읽어낸 요소가 없어요.";
   renderTable(elements);
   renderPreview(elements, result.pages.find((entry) => entry.number === page));
+  if (previewMode !== "simple") void renderPdfPreviewPage();
+}
+
+function closePdfPreview() {
+  pdfPreviewRequest += 1;
+  const document = pdfPreviewDocument;
+  pdfPreviewDocument = null;
+  clearPdfPreviewImage();
+  if (document) {
+    document.close().catch((error) => console.error("PDF 미리보기 종료 실패:", error));
+  }
+}
+
+function clearPdfPreviewImage() {
+  const sourceCanvas = pdfPreviewSourceCanvas;
+  pdfPreviewSourceCanvas = null;
+  pdfPreviewPageNumber = null;
+  pdfPreviewCanvas.width = 0;
+  pdfPreviewCanvas.height = 0;
+  if (sourceCanvas) {
+    sourceCanvas.width = 0;
+    sourceCanvas.height = 0;
+  }
+}
+
+function updatePreviewControls() {
+  const zoom = Number(previewZoom.value) / 100;
+  const isPdf = result?.format === "PDF";
+  $("#preview-zoom-value").textContent = `${Math.round(zoom * 100)}%`;
+  $("#preview-viewport").classList.toggle("zoomed", zoom > 1);
+  for (const element of [preview, pdfPreviewCanvas]) {
+    element.style.transform = `scale(${zoom})`;
+  }
+  preview.toggleAttribute("hidden", previewMode !== "simple");
+  pdfPreviewCanvas.hidden = !isPdf || previewMode === "simple";
+  for (const button of $("#preview-mode-buttons").querySelectorAll("[data-preview-mode]")) {
+    button.setAttribute("aria-pressed", String(button.dataset.previewMode === previewMode));
+  }
+}
+
+function drawPdfPreviewCanvas() {
+  if (!pdfPreviewSourceCanvas) throw new Error("PDF 페이지를 먼저 불러와 주세요.");
+  const { width, height } = pdfPreviewSourceCanvas;
+  pdfPreviewCanvas.width = width;
+  pdfPreviewCanvas.height = height;
+  const context = pdfPreviewCanvas.getContext("2d");
+  if (!context) throw new Error("이 브라우저에서 PDF 페이지를 표시할 수 없어요.");
+  if (previewMode === "enhanced") {
+    const sourceContext = pdfPreviewSourceCanvas.getContext("2d", { willReadFrequently: true });
+    if (!sourceContext) throw new Error("PDF 원본 픽셀을 읽을 수 없어요.");
+    const source = sourceContext.getImageData(0, 0, width, height);
+    const enhanced = enhanceDrawingPixels(source.data, width, height);
+    const output = context.createImageData(width, height);
+    output.data.set(enhanced);
+    context.putImageData(output, 0, 0);
+  } else {
+    context.drawImage(pdfPreviewSourceCanvas, 0, 0);
+  }
+}
+
+function showPdfPreviewError(error) {
+  previewMode = "simple";
+  updatePreviewControls();
+  $("#preview-status").textContent =
+    `PDF 페이지 미리보기를 만들지 못했어요. ${error instanceof Error ? error.message : String(error)}`;
+}
+
+function setPreviewMode(mode) {
+  if (mode !== "simple" && result?.format !== "PDF") return;
+  previewMode = mode;
+  updatePreviewControls();
+  if (mode === "simple") {
+    pdfPreviewRequest += 1;
+    $("#preview-status").textContent = "";
+    return;
+  }
+  if (!pdfPreviewSourceCanvas || pdfPreviewPageNumber !== Number(pageSelect.value)) {
+    void renderPdfPreviewPage();
+  } else {
+    try {
+      drawPdfPreviewCanvas();
+      $("#preview-status").textContent = mode === "enhanced"
+        ? `${Number(pageSelect.value)}페이지 자동 보정 보기예요.`
+        : `${Number(pageSelect.value)}페이지 PDF 원본 보기예요.`;
+    } catch (error) {
+      showPdfPreviewError(error);
+    }
+  }
+}
+
+async function renderPdfPreviewPage() {
+  const request = ++pdfPreviewRequest;
+  const pageNumber = Number(pageSelect.value);
+  let rendered = null;
+  if (!chosenFile || result?.format !== "PDF") return;
+  if (pdfPreviewSourceCanvas && pdfPreviewPageNumber === pageNumber) return;
+  if (pdfPreviewPageNumber !== pageNumber) clearPdfPreviewImage();
+  $("#preview-status").textContent = previewMode === "enhanced"
+    ? `${pageNumber}페이지를 자동 보정 중이에요…`
+    : `${pageNumber}페이지를 불러오는 중이에요…`;
+  try {
+    if (!pdfPreviewDocument) {
+      const document = await openPdfForFeedback(await chosenFile.arrayBuffer());
+      if (request !== pdfPreviewRequest) {
+        document.close().catch((error) => console.error("PDF 미리보기 종료 실패:", error));
+        return;
+      }
+      pdfPreviewDocument = document;
+    }
+    rendered = await pdfPreviewDocument.render(pageNumber, 1400);
+    if (request !== pdfPreviewRequest) return;
+    if (!rendered) throw new Error("선택한 페이지를 찾을 수 없어요.");
+    pdfPreviewSourceCanvas = rendered.canvas;
+    pdfPreviewPageNumber = pageNumber;
+    rendered = null;
+    drawPdfPreviewCanvas();
+    updatePreviewControls();
+    $("#preview-status").textContent = previewMode === "enhanced"
+      ? `${pageNumber}페이지 자동 보정 보기예요.`
+      : `${pageNumber}페이지 PDF 원본 보기예요.`;
+  } catch (error) {
+    if (request !== pdfPreviewRequest) return;
+    showPdfPreviewError(error);
+  } finally {
+    if (rendered?.canvas) {
+      rendered.canvas.width = 0;
+      rendered.canvas.height = 0;
+    }
+  }
 }
 
 function renderTable(elements) {
@@ -772,6 +922,7 @@ dropArea.addEventListener("drop", (event) => {
 });
 startButton.addEventListener("click", async () => {
   if (!chosenFile || busy) return;
+  closePdfPreview();
   setBusy(true, "local");
   $("#read-error").textContent = "";
   startProgress(false);
@@ -1165,16 +1316,21 @@ function showUpload() {
   $("#upload-screen").hidden = false;
   window.scrollTo({ top: 0 });
 }
-$("#brand-home").addEventListener("click", showIntro);
+$("#brand-home").addEventListener("click", () => {
+  closePdfPreview();
+  showIntro();
+});
 $("#start-intro").addEventListener("click", showUpload);
 $("#start-intro-bottom").addEventListener("click", showUpload);
 $("#back-button").addEventListener("click", () => {
+  closePdfPreview();
   $("#review-screen").hidden = true;
   $("#upload-screen").hidden = false;
   activeAnalysisEntry = null;
   activeAnalysisFile = null;
   updateFeedbackAction();
   result = null;
+  previewMode = "simple";
   agentResultView.reset();
   list.replaceChildren();
   preview.replaceChildren();
@@ -1201,6 +1357,11 @@ pageSelect.addEventListener("change", () => {
   offset = 0;
   renderPage();
 });
+$("#preview-mode-buttons").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-preview-mode]");
+  if (button) setPreviewMode(button.dataset.previewMode);
+});
+previewZoom.addEventListener("input", updatePreviewControls);
 $("#previous-results").addEventListener("click", () => {
   offset = Math.max(0, offset - TABLE_SIZE);
   renderPage();

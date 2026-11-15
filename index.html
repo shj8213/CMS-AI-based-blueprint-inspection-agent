@@ -332,10 +332,25 @@
       table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; }
       th, td { padding: 10px; border-bottom: 1px solid #e1e7f0; vertical-align: top; white-space: pre-wrap; overflow-wrap: anywhere; }
       th { position: sticky; top: 0; background: #f1f4f8; }
-      #drawing-preview { width: 100%; height: 480px; }
+      .preview-tools { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin-bottom: 12px; }
+      .preview-modes { display: flex; flex-wrap: wrap; gap: 6px; }
+      .preview-mode[aria-pressed="true"] { border-color: #245cdb; background: #eef3ff; color: #173c91; }
+      .preview-mode-enhanced { border-color: #c58a06; color: #775000; font-weight: 800; }
+      .preview-mode-enhanced[aria-pressed="true"] { border-color: #a56d00; background: #fff0b8; color: #593c00; box-shadow: 0 0 0 2px rgb(197 138 6 / 20%); }
+      .preview-range { display: grid; gap: 4px; color: #526078; font-size: 12px; }
+      .preview-range[hidden] { display: none; }
+      .preview-range input { width: 150px; }
+      .preview-enhancement-note { margin: 0 0 10px; padding: 10px 12px; border: 1px solid #e6c46c; border-radius: 9px; background: #fff8df; color: #624700; font-size: 12px; line-height: 1.6; }
+      .preview-enhancement-note strong { display: block; margin-bottom: 2px; font-size: 13px; }
+      .preview-enhancement-note[hidden] { display: none; }
+      .preview-status { min-height: 20px; color: #68758a; font-size: 12px; }
+      .preview-viewport { width: 100%; height: 480px; overflow: auto; border: 1px solid #dfe5ef; background: #fff; }
+      #drawing-preview { display: block; width: 100%; height: 100%; transform-origin: top left; }
+      #pdf-preview-canvas { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; transform-origin: top left; }
+      #drawing-preview[hidden], #pdf-preview-canvas[hidden] { display: none; }
       #drawing-preview text { fill: #172033; stroke: none; }
       #drawing-preview line, #drawing-preview circle { fill: none; stroke: #245cdb; stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
-      #drawing-preview .uncertain { stroke: #bf7a00; stroke-dasharray: 4 3; }
+      #drawing-preview .uncertain { stroke-dasharray: 4 3; }
       #drawing-preview text.uncertain { fill: #8a5700; stroke: none; }
       .preview-note { margin: 12px 0 0; color: #68758a; font-size: 12px; line-height: 1.6; }
       .agent-input-text { width: 100%; margin-top: 6px; padding: 10px; border: 1px solid #d5deec; border-radius: 9px; font: 12px/1.5 ui-monospace, Consolas, monospace; resize: vertical; }
@@ -869,11 +884,25 @@
           </section>
 
           <div class="review-layout">
-            <section class="card" aria-label="읽어낸 요소 미리보기">
-              <div class="drawing review-drawing">
-                <svg id="drawing-preview" role="img" aria-label="현재 페이지에서 읽어낸 선·원·글자"></svg>
+            <section class="card" aria-label="도면 미리보기">
+              <div class="preview-tools">
+                <div class="preview-modes" id="preview-mode-buttons" role="group" aria-label="미리보기 방식">
+                  <button class="select-button preview-mode" data-preview-mode="simple" type="button" aria-pressed="true">간략 보기</button>
+                  <button class="select-button preview-mode" id="preview-original" data-preview-mode="original" type="button" aria-pressed="false" hidden>PDF 원본</button>
+                  <button class="select-button preview-mode preview-mode-enhanced" id="preview-enhanced" data-preview-mode="enhanced" type="button" aria-pressed="false" hidden>읽기 쉽게 자동 보정</button>
+                </div>
+                <label class="preview-range" for="preview-zoom">확대
+                  <input id="preview-zoom" type="range" min="100" max="300" step="25" value="100">
+                  <output id="preview-zoom-value" for="preview-zoom">100%</output>
+                </label>
               </div>
-              <p class="preview-note">읽은 요소만 다시 그린 미리보기예요. 원본의 글꼴·정렬·잘림·숨김 표시는 반영하지 않아요. 노란 글자와 점선 요소는 원본 확인이 필요해요.</p>
+              <p class="preview-enhancement-note" id="preview-enhancement-note" hidden><strong>자동 보정 안내</strong>PDF 결과를 열면 회색조와 자동 대비·선명화·가장자리 강조를 적용하고, 너무 두꺼운 선은 화면에서 자동으로 줄여 보여드려요. 원본 보기에서 비교할 수 있어요. 화면 보정만 적용되어 원본 파일이나 ③으로 보내는 자료는 바뀌지 않으며, 사라진 정보를 되살리지는 못해요.</p>
+              <div id="preview-status" class="preview-status" role="status" aria-live="polite"></div>
+              <div class="preview-viewport" id="preview-viewport">
+                <svg id="drawing-preview" role="img" aria-label="현재 페이지에서 읽어낸 선·원·글자"></svg>
+                <canvas id="pdf-preview-canvas" aria-label="현재 페이지의 PDF 렌더링"></canvas>
+              </div>
+              <p class="preview-note" id="preview-note"></p>
             </section>
 
             <div class="review-side">
