@@ -8,6 +8,7 @@ import {
   isCodeReadResponse,
   PDF_CODE_READER,
 } from "../src/agent-input.js";
+import { mergeCodeReview, reviewCodeReadAnalysis } from "../src/code-review.js";
 import { readDxf } from "../src/dxf.js";
 import { readPdf } from "../src/pdf.js";
 import { inferCircle, multiply, transform } from "../src/geometry.js";
@@ -1176,14 +1177,14 @@ function markerFixtures() {
   return { analysis, review };
 }
 
-agentTest("도면 위 표시: 좌표가 확실한 피드백만 페이지별 빨강·주황 동그라미로 계산", async () => {
+agentTest("도면 위 표시: 좌표가 확실한 피드백만 페이지별 빨강·노랑 동그라미로 계산", async () => {
   const { analysis, review } = markerFixtures();
   const before = JSON.stringify(analysis);
   const markers = buildFeedbackMarkers(review, analysis);
   assert(JSON.stringify(analysis) === before, "② 결과를 바꾸면 안 돼요.");
   assert(markers.map((marker) => marker.number).join() === "1,2,3,4,5,6,7");
   assert(markers[0].color === "tone-red" && markers[0].symbol === "!", "틀림은 빨강·! 이어야 해요.");
-  assert(markers[1].color === "tone-orange" && markers[1].symbol === "?", "확인 필요는 주황·? 이어야 해요.");
+  assert(markers[1].color === "tone-yellow" && markers[1].symbol === "?", "확인 필요는 노랑·? 이어야 해요.");
   const first = markers[0].placements[0];
   assert(first.page === 1 && Math.abs(first.x - 80 / 300) < 1e-9 && Math.abs(first.y - 30 / 240) < 1e-9, JSON.stringify(first));
   assert(first.radius > 0.2 && first.radius < 0.3, `범위를 감싸는 반지름이어야 해요: ${first.radius}`);
@@ -1194,6 +1195,28 @@ agentTest("도면 위 표시: 좌표가 확실한 피드백만 페이지별 빨�
   }
   assert(buildFeedbackMarkers(review, null).every((marker) => !marker.placements.length && marker.reason));
   assert(pageMatches(first, { width: 300, height: 240 }) && !pageMatches(first, { width: 240, height: 300 }));
+});
+
+agentTest("도면 위 표시: 한 피드백은 글자 위치 위주로 최대 3개만, 너무 큰 원은 그리지 않음", async () => {
+  const page = { page_number: 1, width: 600, height: 400, coordinate_unit: "pt", coordinate_origin: "왼쪽 위" };
+  const text = (id, x) => ({ id, page_number: 1, raw_text: String(x), location: { coordinate_unit: "pt", bbox: [x, 100, x + 12, 108] } });
+  const analysis = { pages: [page], elements: [
+    { id: "L1", page_number: 1, location: { coordinate_unit: "pt", bbox: [20, 300, 580, 300] } },
+    { id: "L2", page_number: 1, location: { coordinate_unit: "pt", bbox: [100, 200, 110, 200] } },
+    ...[50, 150, 250, 350, 450].map((x, index) => text(`T${index + 1}`, x)),
+    text("T6", 51),
+  ] };
+  const review = { findings: [
+    { id: "R1", classification: "틀림", analysis_item_ids: ["L1", "L2", "T1", "T6", "T2", "T3", "T4", "T5"] },
+    { id: "R2", classification: "확인 필요", analysis_item_ids: ["L1"] },
+    { id: "R3", classification: "확인 필요", analysis_item_ids: ["L2"] },
+  ] };
+  const [many, huge, small] = buildFeedbackMarkers(review, analysis);
+  assert(many.placements.length === 3 && many.placements.every((item) => item.elementId.startsWith("T")), JSON.stringify(many.placements));
+  assert(many.placements.map((item) => item.elementId).join() === "T1,T2,T3", "겹친 T6은 빼고 순서대로 3개만 남겨야 해요.");
+  assert(many.hiddenCount === 2, `숨긴 위치 수: ${many.hiddenCount}`);
+  assert(!huge.placements.length && huge.reason.includes("너무 넓어"), huge.reason);
+  assert(small.placements.length === 1, "글자가 없으면 작은 선은 표시해요.");
 });
 
 agentTest("도면 위 표시: ② 좌표가 없으면 PDF 글자 위치로 동그라미를 찾음", async () => {
@@ -1291,7 +1314,7 @@ agentTest("화면: ③ 피드백 동그라미를 해당 페이지 도면 위에 
     const marker = (number) => app.querySelector(`.feedback-marker[data-finding-number="${number}"]`);
     const [red, yellow, byText] = [marker(1), marker(2), marker(4)];
     assert(red.classList.contains("tone-red") && red.textContent === "1!" && red.closest(".review-drawing-page").textContent.includes("1페이지"));
-    assert(yellow.classList.contains("tone-orange") && yellow.textContent === "2?" && yellow.closest(".review-drawing-page").textContent.includes("2페이지"));
+    assert(yellow.classList.contains("tone-yellow") && yellow.textContent === "2?" && yellow.closest(".review-drawing-page").textContent.includes("2페이지"));
     const cards = app.querySelectorAll("#review-agent-findings .review-finding");
     assert(cards[2].textContent.includes("위치 확인 필요") && cards[2].querySelector(".finding-locate").hidden);
     assert(cards[0].textContent.includes("도면 표시: 1페이지") && cards[0].textContent.includes("좌표"));
@@ -1991,7 +2014,8 @@ test("화면: PDF 코드 읽기 결과로 ② 없이 ③ 피드백과 좌표 동
     button.click();
     await waitFor(() => app.querySelector("#upload-screen").getAttribute("aria-busy") === "false", "코드 읽기가 끝나지 않았어요.");
     assert(!app.querySelector("#review-screen").hidden, app.querySelector("#read-error").textContent);
-    assert(app.querySelector("#agent-result-progress").textContent.includes("②를 거치지 않은"));
+    assert(app.querySelector("#agent-result-progress").textContent.includes("코드로 읽고 점검"));
+    assert(app.querySelector("#agent-result-title").textContent === "코드 점검 결과");
     assert(!mock.requests.length, "코드 읽기만으로는 아무것도 보내면 안 돼요.");
     assert(!app.querySelector("#feedback-actions").hidden);
     assert(app.querySelector("#history-list").textContent.includes("simple.pdf"));
@@ -2004,8 +2028,79 @@ test("화면: PDF 코드 읽기 결과로 ② 없이 ③ 피드백과 좌표 동
     assert(uploads[0].options.body.get("file").name === "simple.pdf", "원본 PDF를 함께 보내야 해요.");
     const request = JSON.parse(await uploads[0].options.body.get("activity").text());
     assert(request.text.includes("PDF 코드 읽기 결과") && request.text.includes(textId) && !request.text.includes("② 도면 분석 결과:"));
+    assert(request.text.includes("기준 자료가 없어도 '틀림'") && request.text.includes("애매한 경우는 '확인 필요'"),
+      "도면 값끼리 모순은 틀림, 애매한 것은 확인 필요로 요청해야 해요.");
     const marker = app.querySelector(".feedback-marker");
     assert(marker.dataset.source !== "text", "코드 읽기 좌표로 그려야 해요.");
+  } finally {
+    frame.contentWindow.fetch = originalFetch;
+    if (!app.querySelector("#review-screen").hidden) app.querySelector("#back-button").click();
+  }
+});
+async function codeReviewOf(name) {
+  const input = buildPdfAgentInput(await readPdf(await fixture(name), () => {}, { scanImages: false }), name);
+  const review = reviewCodeReadAnalysis(input);
+  const text = (id) => input.elements.find((element) => element.id === id)?.raw_text;
+  return { input, review, text };
+}
+test("코드 점검: 연습 도면의 숫자 모순 3가지를 틀림으로 찾고 해당 글자를 가리킴", async () => {
+  const started = performance.now();
+  const { review, text } = await codeReviewOf("shaft-practice-challenge.pdf");
+  console.info("코드 점검 시간(읽기 포함):", Math.round(performance.now() - started), "ms");
+  assert(review.schema_version === "2.0" && review.human_review_status === "미확인");
+  parseAgentResult(JSON.stringify(review));
+  const wrong = review.findings.filter((finding) => finding.classification === "틀림");
+  assert(wrong.length === 3 && review.findings.length === 3, JSON.stringify(review.findings.map((finding) => finding.what)));
+  const [chain, fit, keyway] = wrong;
+  assert(chain.what.includes("165") && chain.what.includes("160") && text(chain.analysis_item_ids[0]) === "165", chain.what);
+  assert(fit.what.includes("k6") && fit.what.includes("28") && fit.what.includes("25"), fit.what);
+  assert(fit.analysis_item_ids.map(text).join(",") === "28,25", fit.analysis_item_ids.map(text).join(","));
+  assert(keyway.what.includes("8") && keyway.what.includes("10"), keyway.what);
+  assert(review.findings.every((finding) => finding.analysis_item_ids.length >= 1 && finding.analysis_item_ids.length <= 3));
+});
+test("코드 점검: 맞게 그린 기준 도면과 단순 PDF에서는 잘못 찾지 않음", async () => {
+  const reference = await codeReviewOf("shaft-practice-reference.pdf");
+  assert(!reference.review.findings.length, JSON.stringify(reference.review.findings.map((finding) => finding.what)));
+  assert(reference.review.not_missing.some((item) => item.reason.includes("= 160")), "맞는 합계는 확인된 정보로 남겨야 해요.");
+  const simple = await codeReviewOf("simple.pdf");
+  assert(!simple.review.findings.length && simple.review.summary.includes("문제가 없다는 뜻은 아니에요"));
+});
+test("코드 점검: 지름 기호가 여러 번 나와 연결이 불확실하면 확인 필요로 남김", () => {
+  const text = (id, raw, x, y) => ({ id, page_number: 1, category: "기타문자", raw_text: raw, location: { bbox: [x, y, x + raw.length * 6, y + 10] } });
+  const review = reviewCodeReadAnalysis({ pages: [{ page_number: 1 }], elements: [
+    text("E1", "⌀20 h7", 10, 10), text("E2", "⌀30 h7", 200, 10), text("E3", "⌀20 h7", 400, 10),
+  ] });
+  assert(review.findings.length === 1 && review.findings[0].classification === "확인 필요", JSON.stringify(review.findings));
+});
+test("코드 점검: ③ 결과와 합칠 때 같은 글자를 가리킨 ③ 지적은 중복으로 뺌", () => {
+  const code = { summary: "코드", findings: [{ id: "C01", classification: "틀림", analysis_item_ids: ["E1"] }] };
+  const studio = { schema_version: "2.0", summary: "③", limitations: [], findings: [
+    { id: "R01", analysis_item_ids: ["E1"] }, { id: "R02", analysis_item_ids: ["E9"] },
+  ] };
+  const merged = mergeCodeReview(code, studio);
+  assert(merged.findings.map((finding) => finding.id).join(",") === "C01,R02");
+  assert(merged.limitations.some((item) => item.includes("중복")));
+  assert(mergeCodeReview({ summary: "", findings: [] }, studio) === studio);
+});
+test("화면: 코드 점검으로 틀린 숫자를 바로 빨간 동그라미로 표시(전송 없음)", async () => {
+  if (!app) await openApp();
+  await selectFile("shaft-practice-challenge.pdf");
+  const originalFetch = frame.contentWindow.fetch;
+  const sent = [];
+  frame.contentWindow.fetch = (url, options) => {
+    if (!String(url).includes("/vendor/") && !String(url).includes("/src/")) sent.push(String(url));
+    return originalFetch(url, options);
+  };
+  try {
+    app.querySelector("#code-read-button").click();
+    await waitFor(() => app.querySelectorAll(".feedback-marker").length >= 3,
+      () => `동그라미가 그려지지 않았어요. ${app.querySelector("#agent-result-progress").textContent} ${app.querySelector("#read-error").textContent} ${app.querySelector("#review-drawing-status").textContent}`);
+    assert(!sent.length, `코드 점검은 아무것도 보내면 안 돼요: ${sent.join(", ")}`);
+    assert(app.querySelector("#agent-result-title").textContent === "코드 점검 결과");
+    assert(app.querySelector("#agent-result-progress").textContent.includes("틀림 3건"));
+    assert([...app.querySelectorAll(".feedback-marker")].every((marker) => marker.classList.contains("tone-red")),
+      "틀림은 빨강으로 그려야 해요.");
+    assert(!app.querySelector("#feedback-actions").hidden, "③ 피드백은 선택으로 계속 받을 수 있어야 해요.");
   } finally {
     frame.contentWindow.fetch = originalFetch;
     if (!app.querySelector("#review-screen").hidden) app.querySelector("#back-button").click();

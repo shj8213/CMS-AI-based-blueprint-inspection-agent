@@ -1,4 +1,5 @@
 import { buildDxfAgentMessage, buildPdfAgentResponse, findScanPages, isCodeReadResponse } from "./agent-input.js";
+import { mergeCodeReview, reviewCodeReadAnalysis } from "./code-review.js";
 import { readDxf } from "./dxf.js";
 import { readPdf } from "./pdf.js";
 import { AgentResultError, parseAgentResult } from "./agent-result.js";
@@ -877,15 +878,18 @@ codeReadButton.addEventListener("click", async () => {
       renderHistory();
       await checkSavedMatch(file);
     }
+    const codeReview = reviewCodeReadAnalysis(response);
     agentResultView.reset();
-    agentResultView.showResponse(response);
+    agentResultView.showResponse(JSON.stringify(codeReview), response, file);
     stopProgress(true);
     showReview(false, file.name);
     updateFeedbackAction();
     const count = JSON.parse(response).elements.length;
+    const wrong = codeReview.findings.filter((finding) => finding.classification === "틀림").length;
     const seconds = ((performance.now() - started) / 1000).toFixed(1);
     $("#agent-result-progress").textContent =
-      `PDF를 코드로 읽었어요(${seconds}초, 요소 ${count}개). ②를 거치지 않은 자료예요. ‘피드백 받기’를 누르면 원본 PDF와 이 자료를 ③에 보내요.`
+      `PDF를 코드로 읽고 점검했어요(${seconds}초, 요소 ${count}개, 틀림 ${wrong}건·확인 필요 ${codeReview.findings.length - wrong}건). `
+      + "코드 점검은 숫자끼리 맞는지만 봐요. 나머지까지 보려면 ‘피드백 받기’로 원본 PDF와 이 자료를 ③에 보내요(선택)."
       + (saved ? "" : " 브라우저에 저장하지는 못했어요.");
   } catch (error) {
     stopProgress(false);
@@ -940,7 +944,7 @@ async function requestFeedback(file = activeAnalysisFile) {
       const challenge = await requestHostedChallenge(agentController.signal);
       hostedTokens = await getHostedStudioToken("reviewer", challenge, { signal: agentController.signal });
     }
-    const reviewResponse = await reviewDrawingWithStudio(file, {
+    let reviewResponse = await reviewDrawingWithStudio(file, {
       analysisResult: activeAnalysisEntry.response,
       analysisOrigin: isCodeReadResponse(activeAnalysisEntry.response) ? "code" : "agent",
       hostedAccess: hostedTokens,
@@ -951,6 +955,16 @@ async function requestFeedback(file = activeAnalysisFile) {
       },
     });
     stopProgress(true);
+    if (isCodeReadResponse(activeAnalysisEntry.response)) {
+      try {
+        const parsed = parseAgentResult(reviewResponse);
+        const merged = mergeCodeReview(reviewCodeReadAnalysis(activeAnalysisEntry.response), parsed.data);
+        if (merged !== parsed.data) reviewResponse = JSON.stringify(merged);
+      } catch (error) {
+        if (!(error instanceof AgentResultError)) throw error;
+        // ③ 응답 형식이 맞지 않으면 합치지 않고, 아래 화면 표시에서 형식 오류를 알려요.
+      }
+    }
     agentResultView.showResponse(reviewResponse, activeAnalysisEntry.response, file);
     const reviewSaved = activeAnalysisEntry.id
       && analysisHistory.saveReview(activeAnalysisEntry.id, reviewResponse);

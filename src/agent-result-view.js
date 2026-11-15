@@ -5,6 +5,7 @@ import {
   displayValue,
   parseAgentResult,
 } from "./agent-result.js";
+import { CODE_REVIEW_BASIS } from "./code-review.js";
 import { buildFeedbackMarkers, pageMatches, referencedPages } from "./feedback-markers.js";
 
 const PAGE_SIZE = 50;
@@ -198,9 +199,12 @@ function finishNotes(markers, drawn, sizeMismatch) {
     if (drawn.has(marker.number)) {
       const shown = marker.placements.filter((item) => item.drawn);
       const pagesText = [...new Set(shown.map((item) => item.page))].join(", ");
-      const how = shown.some((item) => item.source === "text") ? "PDF 글자 위치로 찾은" : "②가 기록한 좌표로 그린";
-      const extra = shown.length > 1 ? ` (같은 글자가 ${shown.length}곳이라 점선 후보로 모두 표시)` : "";
-      setLocationNote(marker, `도면 표시: ${pagesText}페이지의 ${marker.number}${marker.symbol} 동그라미 · ${how} 위치${extra}`, false);
+      const how = shown.some((item) => item.source === "text") ? "PDF 글자 위치로 찾은" : "분석 자료의 좌표로 그린";
+      const extra = shown.some((item) => item.candidate)
+        ? ` (같은 글자가 ${shown.length}곳이라 점선 후보로 모두 표시)`
+        : shown.length > 1 ? ` (관련 위치 ${shown.length}곳)` : "";
+      const hidden = marker.hiddenCount ? ` · 나머지 ${marker.hiddenCount}곳은 위치 설명을 보세요` : "";
+      setLocationNote(marker, `도면 표시: ${pagesText}페이지의 ${marker.number}${marker.symbol} 동그라미 · ${how} 위치${extra}${hidden}`, false);
     } else if (marker.placements.length && sizeMismatch) {
       setLocationNote(marker, "위치 확인 필요 · 원본 PDF의 페이지 크기가 ② 결과와 달라 표시하지 않았어요.", true);
     } else {
@@ -304,7 +308,7 @@ async function renderFeedbackDrawing(review, analysis, coordinateMarkers, file, 
 
   finishNotes(markers, drawn, sizeMismatch);
   if (drawn.size) {
-    status.textContent = `피드백 ${markers.length}개 중 ${drawn.size}개를 도면 위에 표시했어요. 빨강(!)은 틀림, 주황(?)은 확인 필요, 점선은 같은 글자가 여러 곳이라 후보로 표시한 위치예요. 참고 표시이니 원본 도면과 직접 비교해 주세요.`;
+    status.textContent = `피드백 ${markers.length}개 중 ${drawn.size}개를 도면 위에 표시했어요. 빨강(!)은 틀림, 노랑(?)은 확인 필요, 점선은 같은 글자가 여러 곳이라 후보로 표시한 위치예요. 참고 표시이니 원본 도면과 직접 비교해 주세요.`;
   } else if (sizeMismatch) {
     status.textContent = "② 결과의 페이지 크기가 원본 PDF와 달라 동그라미를 그리지 않았어요.";
   } else {
@@ -332,8 +336,9 @@ function renderReviewResult(data, responseSummary, message, analysisText) {
       if (!(error instanceof AgentResultError)) throw error;
     }
   }
-  $("#agent-result-title").textContent = "③ 도면 검토 결과";
-  $("#result-title").textContent = "③ 도면 검토 결과";
+  const title = data.review_basis === CODE_REVIEW_BASIS ? "코드 점검 결과" : "③ 도면 검토 결과";
+  $("#agent-result-title").textContent = title;
+  $("#result-title").textContent = title;
   $("#review-agent-result-output").hidden = false;
   let shaftSummary = "② 분석 결과가 제공되지 않아 축 도면 설명을 만들지 않았어요.";
   if (analysisText) {

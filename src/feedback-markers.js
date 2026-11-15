@@ -4,12 +4,15 @@
 
 const MARKER_STYLES = {
   "틀림": { color: "tone-red", symbol: "!", label: "틀림" },
-  "확인 필요": { color: "tone-orange", symbol: "?", label: "확인 필요" },
+  "확인 필요": { color: "tone-yellow", symbol: "?", label: "확인 필요" },
 };
 const MIN_RADIUS = 0.015;
 const POINT_RADIUS = 0.02;
 const EDGE_TOLERANCE = 0.02;
 const MAX_TEXT_CANDIDATES = 3;
+// 한 피드백에 동그라미가 너무 많거나 도면 절반을 덮으면 오히려 보기 어려워서 줄입니다.
+const MAX_PLACEMENTS_PER_FINDING = 3;
+const MAX_RADIUS = 0.25;
 export const ASPECT_TOLERANCE = 0.03;
 
 const isNumber = (value) => typeof value === "number" && Number.isFinite(value);
@@ -203,25 +206,43 @@ export function buildFeedbackMarkers(review, analysis, pdfPages = null) {
       if (Number.isInteger(element.page_number)) {
         const { placement, reason } = placeElement(element, pages.get(element.page_number));
         if (placement) {
-          placements.push({ ...placement, source: "coordinate", candidate: false });
+          const isText = typeof element.raw_text === "string" && element.raw_text.trim() !== "";
+          placements.push({ ...placement, source: "coordinate", candidate: false, isText });
           continue;
         }
         coordinateReason = reason;
       }
       const byText = placeByText(element, pdfPages);
-      if (byText.placements) placements.push(...byText.placements);
+      if (byText.placements) placements.push(...byText.placements.map((item) => ({ ...item, isText: true })));
       else reasons.push(`${id}: ${pdfPages ? byText.reason : coordinateReason}`);
     }
     if (!finding.analysis_item_ids?.length) reasons.push("연결된 ② 항목이 없어요.");
+    const tidy = tidyPlacements(placements);
+    if (placements.length && !tidy.placements.length) reasons.push("가리키는 범위가 너무 넓어 동그라미를 그리지 않았어요.");
     return {
       findingId: finding.id,
       number: index + 1,
       classification: finding.classification,
       ...style,
-      placements,
-      reason: placements.length ? "" : [...new Set(reasons)].join(" "),
+      placements: tidy.placements,
+      hiddenCount: tidy.hiddenCount,
+      reason: tidy.placements.length ? "" : [...new Set(reasons)].join(" "),
     };
   });
+}
+
+// 글자 위치가 있으면 선 같은 형상은 빼고, 너무 큰 원·겹친 원을 없앤 뒤 최대 3개만 남깁니다.
+function tidyPlacements(placements) {
+  let list = placements.filter((item) => item.radius <= MAX_RADIUS);
+  if (list.some((item) => item.isText)) list = list.filter((item) => item.isText);
+  const unique = [];
+  for (const item of list) {
+    const overlaps = unique.some((kept) => kept.page === item.page
+      && Math.hypot(kept.x - item.x, (kept.y - item.y) * (item.pageHeight / item.pageWidth)) < Math.max(kept.radius, item.radius));
+    if (!overlaps) unique.push(item);
+  }
+  const kept = unique.slice(0, MAX_PLACEMENTS_PER_FINDING).map(({ isText, ...item }) => item);
+  return { placements: kept, hiddenCount: unique.length - kept.length };
 }
 
 // ② 결과가 가리키는 페이지 번호 목록입니다. 페이지가 없는 항목이 있으면 null(전체 페이지)을 돌려줍니다.
