@@ -393,7 +393,13 @@
       .finding-location-note.missing { color: #8a5a00; }
       .review-drawing-page { margin: 12px 0; }
       .review-drawing-page figcaption { font-size: 13px; font-weight: 700; margin-bottom: 6px; }
-      .review-drawing-frame { position: relative; border: 1px solid #c3cee0; border-radius: 6px; overflow: hidden; }
+      .review-drawing-viewport { border: 1px solid #c3cee0; border-radius: 6px; overflow: hidden; }
+      .review-drawing-viewport.zoomed { overflow: auto; max-height: min(80vh, 900px); }
+      .review-drawing-frame { position: relative; width: 100%; }
+      .zoom-controls { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+      .zoom-button { min-width: 36px; padding: 4px 10px; border: 1px solid #c3cee0; border-radius: 6px; background: #fff; font: inherit; font-size: 14px; cursor: pointer; }
+      .zoom-button:disabled { opacity: .45; cursor: default; }
+      .zoom-level { min-width: 48px; text-align: center; font-size: 13px; font-weight: 700; }
       .review-drawing-frame canvas { display: block; width: 100%; height: auto; }
       .feedback-marker { position: absolute; aspect-ratio: 1; min-width: 22px; padding: 0; transform: translate(-50%, -50%); border: 3px solid; border-radius: 50%; background: transparent; cursor: pointer; }
       .feedback-marker.tone-red { border-color: #c62828; }

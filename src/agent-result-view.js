@@ -176,7 +176,7 @@ function highlightFinding(findingId, { scrollTo }) {
   }
   const target = scrollTo === "card" ? card : markers[0];
   if (target) {
-    target.scrollIntoView?.({ block: "center", behavior: "smooth" });
+    target.scrollIntoView?.({ block: "center", inline: "center", behavior: "smooth" });
     if (scrollTo === "card") target.focus({ preventScroll: true });
   }
 }
@@ -213,6 +213,50 @@ function finishNotes(markers, drawn, sizeMismatch) {
   }
 }
 
+const DRAWING_RENDER_WIDTH = 2400;
+const ZOOM_LEVELS = [1, 1.5, 2, 3, 4];
+
+// 도면 그림을 확대·축소하는 버튼이에요. 보고 있던 가운데 위치를 유지하며 크기만 바꿔요.
+function createZoomControls(viewport, frame, pageNumber) {
+  const controls = document.createElement("div");
+  controls.className = "zoom-controls";
+  const level = document.createElement("span");
+  level.className = "zoom-level";
+  level.setAttribute("aria-live", "polite");
+  const make = (text, label) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "zoom-button";
+    button.textContent = text;
+    button.setAttribute("aria-label", `${pageNumber}페이지 ${label}`);
+    return button;
+  };
+  const zoomOut = make("−", "축소");
+  const zoomIn = make("+", "확대");
+  const reset = make("원래 크기", "원래 크기로");
+  let index = 0;
+  const apply = (next) => {
+    const centerX = (viewport.scrollLeft + viewport.clientWidth / 2) / (viewport.scrollWidth || 1);
+    const centerY = (viewport.scrollTop + viewport.clientHeight / 2) / (viewport.scrollHeight || 1);
+    index = Math.max(0, Math.min(ZOOM_LEVELS.length - 1, next));
+    const zoom = ZOOM_LEVELS[index];
+    frame.style.width = `${zoom * 100}%`;
+    viewport.classList.toggle("zoomed", zoom > 1);
+    viewport.scrollLeft = centerX * viewport.scrollWidth - viewport.clientWidth / 2;
+    viewport.scrollTop = centerY * viewport.scrollHeight - viewport.clientHeight / 2;
+    level.textContent = `${Math.round(zoom * 100)}%`;
+    zoomOut.disabled = index === 0;
+    reset.disabled = index === 0;
+    zoomIn.disabled = index === ZOOM_LEVELS.length - 1;
+  };
+  zoomOut.addEventListener("click", () => apply(index - 1));
+  zoomIn.addEventListener("click", () => apply(index + 1));
+  reset.addEventListener("click", () => apply(0));
+  controls.append(zoomOut, level, zoomIn, reset);
+  apply(0);
+  return controls;
+}
+
 async function renderFeedbackDrawing(review, analysis, coordinateMarkers, file, isCurrent) {
   const section = $("#review-drawing");
   const area = $("#review-drawing-pages");
@@ -247,7 +291,7 @@ async function renderFeedbackDrawing(review, analysis, coordinateMarkers, file, 
       .sort((a, b) => a - b);
     if (pageNumbers.length) status.textContent = "도면 그림을 준비하는 중이에요…";
     for (const number of pageNumbers) {
-      const page = await pdf.render(number);
+      const page = await pdf.render(number, DRAWING_RENDER_WIDTH);
       if (!isCurrent()) return;
       if (page) pages.push(page);
     }
@@ -271,6 +315,11 @@ async function renderFeedbackDrawing(review, analysis, coordinateMarkers, file, 
     caption.textContent = `${page.pageNumber}페이지`;
     const frame = document.createElement("div");
     frame.className = "review-drawing-frame";
+    const viewport = document.createElement("div");
+    viewport.className = "review-drawing-viewport";
+    viewport.tabIndex = 0;
+    viewport.setAttribute("aria-label", `${page.pageNumber}페이지 도면 보기 영역. 확대하면 스크롤로 움직일 수 있어요.`);
+    viewport.append(frame);
     page.canvas.setAttribute("role", "img");
     page.canvas.setAttribute("aria-label", `${page.pageNumber}페이지 도면 그림`);
     frame.append(page.canvas);
@@ -302,7 +351,7 @@ async function renderFeedbackDrawing(review, analysis, coordinateMarkers, file, 
         drawn.add(marker.number);
       }
     }
-    figure.append(caption, frame);
+    figure.append(caption, createZoomControls(viewport, frame, page.pageNumber), viewport);
     area.append(figure);
   }
 

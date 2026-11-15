@@ -2082,7 +2082,7 @@ test("코드 점검: ③ 결과와 합칠 때 같은 글자를 가리킨 ③ 지
   assert(merged.limitations.some((item) => item.includes("중복")));
   assert(mergeCodeReview({ summary: "", findings: [] }, studio) === studio);
 });
-test("화면: 코드 점검으로 틀린 숫자를 바로 빨간 동그라미로 표시(전송 없음)", async () => {
+test("화면: 코드 점검으로 틀린 숫자를 바로 빨간 동그라미로 표시(전송 없음)하고 도면 확대", async () => {
   if (!app) await openApp();
   await selectFile("shaft-practice-challenge.pdf");
   const originalFetch = frame.contentWindow.fetch;
@@ -2101,6 +2101,23 @@ test("화면: 코드 점검으로 틀린 숫자를 바로 빨간 동그라미로
     assert([...app.querySelectorAll(".feedback-marker")].every((marker) => marker.classList.contains("tone-red")),
       "틀림은 빨강으로 그려야 해요.");
     assert(!app.querySelector("#feedback-actions").hidden, "③ 피드백은 선택으로 계속 받을 수 있어야 해요.");
+    const viewport = app.querySelector(".review-drawing-viewport");
+    const close = (a, b, tolerance) => Math.abs(a - b) <= tolerance;
+    const frameBox = () => viewport.querySelector(".review-drawing-frame").getBoundingClientRect();
+    const markerBox = () => viewport.querySelector(".feedback-marker").getBoundingClientRect();
+    const [zoomOut, zoomIn, reset] = [...app.querySelectorAll(".zoom-controls .zoom-button")];
+    const before = { frame: frameBox(), marker: markerBox() };
+    assert(zoomOut.disabled && reset.disabled && app.querySelector(".zoom-level").textContent === "100%");
+    zoomIn.click();
+    zoomIn.click();
+    const after = { frame: frameBox(), marker: markerBox() };
+    assert(app.querySelector(".zoom-level").textContent === "200%" && close(after.frame.width, before.frame.width * 2, 2),
+      `두 배로 커져야 해요: ${before.frame.width} → ${after.frame.width}`);
+    const relative = (box) => (box.marker.left + box.marker.width / 2 - box.frame.left) / box.frame.width;
+    assert(close(relative(after), relative(before), 0.01), "확대해도 동그라미는 같은 도면 위치에 있어야 해요.");
+    assert(viewport.scrollWidth > viewport.clientWidth, "확대하면 스크롤로 움직일 수 있어야 해요.");
+    reset.click();
+    assert(close(frameBox().width, before.frame.width, 1) && app.querySelector(".zoom-level").textContent === "100%");
   } finally {
     frame.contentWindow.fetch = originalFetch;
     if (!app.querySelector("#review-screen").hidden) app.querySelector("#back-button").click();
