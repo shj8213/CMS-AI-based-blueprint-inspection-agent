@@ -5,8 +5,7 @@ import {
   displayValue,
   parseAgentResult,
 } from "./agent-result.js";
-import { CODE_REVIEW_BASIS } from "./code-review.js";
-import { buildFeedbackMarkers, mergeOverlappingMarkers, pageMatches, referencedPages } from "./feedback-markers.js";
+import { buildFeedbackMarkers, pageMatches, referencedPages } from "./feedback-markers.js";
 
 const PAGE_SIZE = 50;
 const $ = (selector) => document.querySelector(selector);
@@ -140,35 +139,6 @@ function renderSummary(summary, selector = "#agent-summary", emptyMessage = "총
   container.replaceChildren(list);
 }
 
-// 질문 카드: 답은 화면에만 기록하고 저장하거나 다시 점검하지 않아요(초안).
-function renderQuestion(question) {
-  const box = document.createElement("div");
-  box.className = "finding-question";
-  const text = document.createElement("p");
-  text.className = "finding-question-text";
-  text.textContent = question.text;
-  const choices = document.createElement("div");
-  choices.className = "finding-question-choices";
-  const answer = document.createElement("p");
-  answer.className = "finding-question-answer";
-  answer.textContent = "아직 답하지 않았어요.";
-  for (const choice of question.choices) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "select-button";
-    button.textContent = choice;
-    button.setAttribute("aria-pressed", "false");
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      for (const other of choices.querySelectorAll("button")) other.setAttribute("aria-pressed", String(other === button));
-      answer.textContent = `답변: ${choice} (이 화면에만 기록돼요)`;
-    });
-    choices.append(button);
-  }
-  box.append(text, choices, answer);
-  return box;
-}
-
 function addReviewField(container, label, value, emptyText = "확인 필요") {
   const row = document.createElement("p");
   const name = document.createElement("strong");
@@ -205,7 +175,7 @@ function highlightFinding(findingId, { scrollTo }) {
   }
   const target = scrollTo === "card" ? card : markers[0];
   if (target) {
-    target.scrollIntoView?.({ block: "center", inline: "center", behavior: "smooth" });
+    target.scrollIntoView?.({ block: "center", behavior: "smooth" });
     if (scrollTo === "card") target.focus({ preventScroll: true });
   }
 }
@@ -228,184 +198,15 @@ function finishNotes(markers, drawn, sizeMismatch) {
     if (drawn.has(marker.number)) {
       const shown = marker.placements.filter((item) => item.drawn);
       const pagesText = [...new Set(shown.map((item) => item.page))].join(", ");
-      const how = shown.some((item) => item.source === "text") ? "글자 위치" : "좌표";
-      const extra = shown.some((item) => item.candidate)
-        ? ` · 후보 ${shown.length}곳`
-        : shown.length > 1 ? ` · ${shown.length}곳` : "";
-      const hidden = marker.hiddenCount ? ` · 그 밖 ${marker.hiddenCount}곳은 ‘자세히’` : "";
-      setLocationNote(marker, `도면 표시: ${pagesText}페이지 · ${how}${extra}${hidden}`, false);
+      const how = shown.some((item) => item.source === "text") ? "PDF 글자 위치로 찾은" : "②가 기록한 좌표로 그린";
+      const extra = shown.length > 1 ? ` (같은 글자가 ${shown.length}곳이라 점선 후보로 모두 표시)` : "";
+      setLocationNote(marker, `도면 표시: ${pagesText}페이지의 ${marker.number}${marker.symbol} 동그라미 · ${how} 위치${extra}`, false);
     } else if (marker.placements.length && sizeMismatch) {
       setLocationNote(marker, "위치 확인 필요 · 원본 PDF의 페이지 크기가 ② 결과와 달라 표시하지 않았어요.", true);
     } else {
       setLocationNote(marker, `위치 확인 필요 · ${marker.reason || "도면 위 위치를 찾지 못했어요."}`, true);
     }
   }
-}
-
-const DRAWING_RENDER_WIDTH = 2400;
-const ZOOM_LEVELS = [1, 1.5, 2, 3, 4];
-
-const LABEL_CORNERS = [
-  { side: "right", vertical: "top" },
-  { side: "left", vertical: "top" },
-  { side: "right", vertical: "bottom" },
-  { side: "left", vertical: "bottom" },
-  { side: "center", vertical: "above" },
-  { side: "center", vertical: "below" },
-  { side: "center", vertical: "above", extra: 12 },
-  { side: "center", vertical: "below", extra: 12 },
-];
-
-function setLabelCorner(label, row, corner) {
-  const center = corner.side === "center";
-  const gap = 2 + (corner.extra ?? 0) + row * 20;
-  label.style.left = corner.side === "right" ? "100%" : center ? "50%" : "auto";
-  label.style.right = corner.side === "left" ? "100%" : "auto";
-  label.style.marginLeft = corner.side === "right" ? "2px" : "0";
-  label.style.marginRight = corner.side === "left" ? "2px" : "0";
-  label.style.transform = center ? "translateX(-50%)" : "";
-  label.style.top = corner.vertical === "top" ? `${row * 22 - 6}px`
-    : corner.vertical === "below" ? `calc(100% + ${gap}px)` : "auto";
-  label.style.bottom = corner.vertical === "bottom" ? `${-6 - row * 22}px`
-    : corner.vertical === "above" ? `calc(100% + ${gap}px)` : "auto";
-}
-
-function overlaps(a, b) {
-  return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
-}
-
-// 번호 표시가 다른 동그라미나 번호를 가리지 않도록 오른쪽 위 → 왼쪽 위 → 오른쪽 아래 → 왼쪽 아래 → 위 → 아래 순서로 빈 자리를 골라요.
-// 빈 자리가 없으면 가장 적게 겹치는 자리를 써요.
-function placeMarkerLabels(frame) {
-  const buttons = [...frame.querySelectorAll(".feedback-marker")];
-  if (!buttons.length || !frame.getBoundingClientRect().width) return;
-  const groups = new Map();
-  for (const button of buttons) {
-    const key = `${button.style.left}|${button.style.top}|${button.style.width}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(button);
-  }
-  const area = frame.getBoundingClientRect();
-  // 좁은 화면에서는 최소 크기(22px) 때문에 가까운 동그라미끼리 겹칠 수 있어 최소 크기를 줄여요.
-  const circles = buttons.filter((button) => !button.classList.contains("label-only"));
-  for (const button of circles) button.style.minWidth = "";
-  const centers = circles.map((button) => {
-    const rect = button.getBoundingClientRect();
-    return { button, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-  });
-  for (const a of centers) {
-    const nearest = Math.min(...centers.filter((b) => b !== a).map((b) => Math.hypot(a.x - b.x, a.y - b.y)));
-    if (nearest < 24) a.button.style.minWidth = `${Math.max(8, nearest - 2)}px`;
-  }
-  for (const button of buttons) {
-    if (button.classList.contains("label-only")) {
-      const owner = circles.find((other) => other.style.left === button.style.left && other.style.top === button.style.top);
-      if (owner) button.style.minWidth = owner.style.minWidth;
-    }
-  }
-  const entries = [...groups.values()].map((members) => ({
-    others: buttons.filter((button) => !members.includes(button) && !button.classList.contains("label-only"))
-      .map((button) => button.getBoundingClientRect()),
-    labels: members.map((button, index) => ({
-      label: button.querySelector(".feedback-marker-label"),
-      row: Number(button.dataset.labelRow ?? index),
-    })).filter((entry) => entry.label),
-    rects: [],
-  }));
-  // 처음엔 앞의 번호만 보고 고르고, 이후에는 다른 번호 전부를 보고 다시 골라요.
-  for (let pass = 0; pass < 3; pass += 1) {
-    let changed = false;
-    entries.forEach((entry, index) => {
-      const placed = entries.filter((other, otherIndex) => other !== entry && (pass > 0 || otherIndex < index))
-        .flatMap((other) => other.rects);
-      let chosen = LABEL_CORNERS[0];
-      let fewest = Infinity;
-      for (const corner of LABEL_CORNERS) {
-        for (const item of entry.labels) setLabelCorner(item.label, item.row, corner);
-        const rects = entry.labels.map((item) => item.label.getBoundingClientRect());
-        const outside = rects.some((rect) => rect.left < area.left || rect.right > area.right
-          || rect.top < area.top || rect.bottom > area.bottom);
-        const hits = outside ? Infinity : rects.reduce((sum, rect) => sum
-          + entry.others.filter((other) => overlaps(rect, other)).length
-          + placed.filter((other) => overlaps(rect, other)).length, 0);
-        if (hits < fewest) {
-          fewest = hits;
-          chosen = corner;
-        }
-        if (hits === 0) break;
-      }
-      if (entry.chosen !== chosen) changed = true;
-      entry.chosen = chosen;
-      for (const item of entry.labels) setLabelCorner(item.label, item.row, chosen);
-      entry.rects = entry.labels.map((item) => item.label.getBoundingClientRect());
-    });
-    if (!changed) break;
-  }
-}
-
-// 도면 그림을 확대·축소하는 버튼이에요. 보고 있던 가운데 위치를 유지하며 크기만 바꿔요.
-function createZoomControls(viewport, frame, pageNumber) {
-  const controls = document.createElement("div");
-  controls.className = "zoom-controls";
-  const level = document.createElement("span");
-  level.className = "zoom-level";
-  level.setAttribute("aria-live", "polite");
-  const make = (text, label) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "zoom-button";
-    button.textContent = text;
-    button.setAttribute("aria-label", `${pageNumber}페이지 ${label}`);
-    return button;
-  };
-  const zoomOut = make("−", "축소");
-  const zoomIn = make("+", "확대");
-  const reset = make("원래 크기", "원래 크기로");
-  const minZoom = ZOOM_LEVELS[0];
-  const maxZoom = ZOOM_LEVELS.at(-1);
-  let zoom = minZoom;
-  // anchor: 확대 기준이 되는 보기 영역 안의 위치(px). 없으면 가운데를 기준으로 해요.
-  const apply = (next, anchor = null) => {
-    const previous = zoom;
-    zoom = Math.max(minZoom, Math.min(maxZoom, next));
-    const x = anchor?.x ?? viewport.clientWidth / 2;
-    const y = anchor?.y ?? viewport.clientHeight / 2;
-    const pointX = (viewport.scrollLeft + x) / previous;
-    const pointY = (viewport.scrollTop + y) / previous;
-    frame.style.width = `${zoom * 100}%`;
-    viewport.classList.toggle("zoomed", zoom > minZoom);
-    viewport.scrollLeft = pointX * zoom - x;
-    viewport.scrollTop = pointY * zoom - y;
-    level.textContent = `${Math.round(zoom * 100)}%`;
-    zoomOut.disabled = zoom <= minZoom;
-    reset.disabled = zoom <= minZoom;
-    zoomIn.disabled = zoom >= maxZoom;
-    placeMarkerLabels(frame);
-  };
-  const step = (direction) => {
-    const next = direction > 0
-      ? ZOOM_LEVELS.find((value) => value > zoom + 0.01) ?? maxZoom
-      : [...ZOOM_LEVELS].reverse().find((value) => value < zoom - 0.01) ?? minZoom;
-    apply(next);
-  };
-  zoomOut.addEventListener("click", () => step(-1));
-  zoomIn.addEventListener("click", () => step(1));
-  reset.addEventListener("click", () => apply(minZoom));
-  // 일반 휠은 페이지 스크롤로 두고, Ctrl/⌘+휠과 트랙패드 두 손가락 벌리기(브라우저가 ctrlKey로 보냄)로 확대해요.
-  viewport.addEventListener("wheel", (event) => {
-    if (!event.ctrlKey && !event.metaKey) return;
-    event.preventDefault();
-    const box = viewport.getBoundingClientRect();
-    const delta = event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY;
-    apply(zoom * Math.exp(-Math.max(-100, Math.min(100, delta)) * 0.004),
-      { x: event.clientX - box.left, y: event.clientY - box.top });
-  }, { passive: false });
-  const hint = document.createElement("span");
-  hint.className = "zoom-hint";
-  hint.textContent = "Ctrl(⌘)+휠로도 확대";
-  controls.append(zoomOut, level, zoomIn, reset, hint);
-  apply(minZoom);
-  return controls;
 }
 
 async function renderFeedbackDrawing(review, analysis, coordinateMarkers, file, isCurrent) {
@@ -437,12 +238,12 @@ async function renderFeedbackDrawing(review, analysis, coordinateMarkers, file, 
       if (pageText) pdfPages.set(number, pageText);
     }
     if (!isCurrent()) return;
-    markers = mergeOverlappingMarkers(buildFeedbackMarkers(review, analysis, pdfPages));
+    markers = buildFeedbackMarkers(review, analysis, pdfPages);
     const pageNumbers = [...new Set(markers.flatMap((marker) => marker.placements.map((item) => item.page)))]
       .sort((a, b) => a - b);
     if (pageNumbers.length) status.textContent = "도면 그림을 준비하는 중이에요…";
     for (const number of pageNumbers) {
-      const page = await pdf.render(number, DRAWING_RENDER_WIDTH);
+      const page = await pdf.render(number);
       if (!isCurrent()) return;
       if (page) pages.push(page);
     }
@@ -459,7 +260,6 @@ async function renderFeedbackDrawing(review, analysis, coordinateMarkers, file, 
 
   const drawn = new Set();
   let sizeMismatch = false;
-  const spotCount = new Map();
   for (const page of pages) {
     const figure = document.createElement("figure");
     figure.className = "review-drawing-page";
@@ -467,28 +267,19 @@ async function renderFeedbackDrawing(review, analysis, coordinateMarkers, file, 
     caption.textContent = `${page.pageNumber}페이지`;
     const frame = document.createElement("div");
     frame.className = "review-drawing-frame";
-    const viewport = document.createElement("div");
-    viewport.className = "review-drawing-viewport";
-    viewport.tabIndex = 0;
-    viewport.setAttribute("aria-label", `${page.pageNumber}페이지 도면 보기 영역. 확대하면 스크롤로 움직일 수 있어요.`);
-    viewport.append(frame);
     page.canvas.setAttribute("role", "img");
     page.canvas.setAttribute("aria-label", `${page.pageNumber}페이지 도면 그림`);
     frame.append(page.canvas);
     for (const marker of markers) {
       for (const placement of marker.placements) {
         if (placement.page !== page.pageNumber) continue;
-        if (placement.hidden) {
-          placement.drawn = true;
-          continue;
-        }
         if (!pageMatches(placement, page)) {
           sizeMismatch = true;
           continue;
         }
         const button = document.createElement("button");
         button.type = "button";
-        button.className = `feedback-marker ${marker.color}${placement.candidate ? " candidate" : ""}${placement.labelOnly ? " label-only" : ""}`;
+        button.className = `feedback-marker ${marker.color}${placement.candidate ? " candidate" : ""}`;
         button.dataset.findingNumber = String(marker.number);
         button.dataset.source = placement.source;
         button.style.left = `${placement.x * 100}%`;
@@ -499,12 +290,7 @@ async function renderFeedbackDrawing(review, analysis, coordinateMarkers, file, 
           `${marker.number}번 ${marker.label} 피드백 (${marker.findingId})${placement.candidate ? " 후보 위치" : ""} 카드 보기`);
         const label = document.createElement("span");
         label.className = "feedback-marker-label";
-        const spot = (spotCount.get(marker.number) ?? 0) + 1;
-        spotCount.set(marker.number, spot);
-        // 같은 지적의 두 번째 곳부터는 기호 없이 1′, 1″처럼 짧게 적어 번호가 길어지지 않게 해요.
-        label.textContent = spot === 1 ? `${marker.number}${marker.symbol}` : `${marker.number}${"′".repeat(Math.min(spot - 1, 2))}`;
-        if (placement.labelRow) label.style.top = `${placement.labelRow * 22 - 6}px`;
-        button.dataset.labelRow = String(placement.labelRow ?? 0);
+        label.textContent = `${marker.number}${marker.symbol}`;
         button.append(label);
         button.addEventListener("click", () => highlightFinding(String(marker.number), { scrollTo: "card" }));
         frame.append(button);
@@ -512,16 +298,13 @@ async function renderFeedbackDrawing(review, analysis, coordinateMarkers, file, 
         drawn.add(marker.number);
       }
     }
-    figure.append(caption, createZoomControls(viewport, frame, page.pageNumber), viewport);
+    figure.append(caption, frame);
     area.append(figure);
-    // 화면에 붙은 뒤나 그림 크기가 바뀔 때 번호 자리를 다시 골라요.
-    new ResizeObserver(() => placeMarkerLabels(frame)).observe(frame);
   }
 
   finishNotes(markers, drawn, sizeMismatch);
   if (drawn.size) {
-    status.textContent = `${drawn.size}/${markers.length}개 표시`;
-    $("#review-drawing-legend").hidden = false;
+    status.textContent = `피드백 ${markers.length}개 중 ${drawn.size}개를 도면 위에 표시했어요. 빨강(!)은 틀림, 주황(?)은 확인 필요, 점선은 같은 글자가 여러 곳이라 후보로 표시한 위치예요. 참고 표시이니 원본 도면과 직접 비교해 주세요.`;
   } else if (sizeMismatch) {
     status.textContent = "② 결과의 페이지 크기가 원본 PDF와 달라 동그라미를 그리지 않았어요.";
   } else {
@@ -549,9 +332,8 @@ function renderReviewResult(data, responseSummary, message, analysisText) {
       if (!(error instanceof AgentResultError)) throw error;
     }
   }
-  const title = data.review_basis === CODE_REVIEW_BASIS ? "코드 점검 결과" : "③ 도면 검토 결과";
-  $("#agent-result-title").textContent = title;
-  $("#result-title").textContent = title;
+  $("#agent-result-title").textContent = "③ 도면 검토 결과";
+  $("#result-title").textContent = "③ 도면 검토 결과";
   $("#review-agent-result-output").hidden = false;
   let shaftSummary = "② 분석 결과가 제공되지 않아 축 도면 설명을 만들지 않았어요.";
   if (analysisText) {
@@ -608,35 +390,25 @@ function renderReviewResult(data, responseSummary, message, analysisText) {
       card.append(note, locate);
       card.addEventListener("click", (event) => {
         if (!card.classList.contains("located")) return;
-        if (event.target.closest("button, details") || window.getSelection?.().toString()) return;
+        if (event.target.closest("button") || window.getSelection?.().toString()) return;
         highlightFinding(String(marker.number), { scrollTo: "marker" });
       });
-      addReviewField(card, "문제", finding.what);
-      addReviewField(card, "이유", finding.why);
-      if (finding.question) {
-        card.append(renderQuestion(finding.question));
-      } else {
-        addReviewField(card, "고칠 방법", finding.how_to_resolve);
-      }
-      const more = document.createElement("details");
-      more.className = "finding-more";
-      const moreTitle = document.createElement("summary");
-      moreTitle.textContent = "자세히";
-      more.append(moreTitle);
-      addReviewField(more, "위치", finding.location);
-      addReviewField(more, "② 항목 ID", finding.analysis_item_ids.join(", "), "없음");
-      addReviewField(more, "근거", finding.basis);
-      addReviewField(more, "확인한 내용", finding.evidence);
+      addReviewField(card, "② 항목 ID", finding.analysis_item_ids.join(", "), "없음");
+      addReviewField(card, "위치", finding.location);
+      addReviewField(card, "무엇이 문제인지", finding.what);
+      addReviewField(card, "왜 확인해야 하는지", finding.why);
+      addReviewField(card, "근거", finding.basis);
+      addReviewField(card, "어떻게 확인할지", finding.how_to_resolve);
+      addReviewField(card, "확인한 내용", finding.evidence);
       if (finding.intent_hypothesis) {
         addReviewField(
-          more,
+          card,
           "가능한 의도(추정)",
           finding.intent_hypothesis.replace(/^(?:가능한 의도\(추정\):\s*)+/, ""),
         );
       }
-      addReviewField(more, "판단 근거·신뢰도", `${finding.confidence} · ${finding.confidence_reason}`);
-      addReviewField(more, "다음 확인", finding.next_check, "더 확인할 내용 없음");
-      card.append(more);
+      addReviewField(card, "판단 근거·신뢰도", `${finding.confidence} · ${finding.confidence_reason}`);
+      addReviewField(card, "다음 확인", finding.next_check, "더 확인할 내용 없음");
       return card;
     },
   );
@@ -794,7 +566,6 @@ export function createAgentResultView() {
     $("#review-drawing").hidden = true;
     $("#review-drawing-pages").replaceChildren();
     $("#review-drawing-status").textContent = "";
-    $("#review-drawing-legend").hidden = true;
   }
 
   function showResult(text, message, analysisText, file = null) {

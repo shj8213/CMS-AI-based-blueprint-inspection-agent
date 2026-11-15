@@ -4,16 +4,12 @@
 
 const MARKER_STYLES = {
   "틀림": { color: "tone-red", symbol: "!", label: "틀림" },
-  "확인 필요": { color: "tone-yellow", symbol: "?", label: "확인 필요" },
-  "질문": { color: "tone-blue", symbol: "?", label: "질문" },
+  "확인 필요": { color: "tone-orange", symbol: "?", label: "확인 필요" },
 };
 const MIN_RADIUS = 0.015;
 const POINT_RADIUS = 0.02;
 const EDGE_TOLERANCE = 0.02;
 const MAX_TEXT_CANDIDATES = 3;
-// 한 피드백에 동그라미가 너무 많거나 도면 절반을 덮으면 오히려 보기 어려워서 줄입니다.
-const MAX_PLACEMENTS_PER_FINDING = 3;
-const MAX_RADIUS = 0.25;
 export const ASPECT_TOLERANCE = 0.03;
 
 const isNumber = (value) => typeof value === "number" && Number.isFinite(value);
@@ -207,104 +203,25 @@ export function buildFeedbackMarkers(review, analysis, pdfPages = null) {
       if (Number.isInteger(element.page_number)) {
         const { placement, reason } = placeElement(element, pages.get(element.page_number));
         if (placement) {
-          const isText = typeof element.raw_text === "string" && element.raw_text.trim() !== "";
-          placements.push({ ...placement, source: "coordinate", candidate: false, isText });
+          placements.push({ ...placement, source: "coordinate", candidate: false });
           continue;
         }
         coordinateReason = reason;
       }
       const byText = placeByText(element, pdfPages);
-      if (byText.placements) placements.push(...byText.placements.map((item) => ({ ...item, isText: true })));
+      if (byText.placements) placements.push(...byText.placements);
       else reasons.push(`${id}: ${pdfPages ? byText.reason : coordinateReason}`);
     }
     if (!finding.analysis_item_ids?.length) reasons.push("연결된 ② 항목이 없어요.");
-    const tidy = tidyPlacements(placements);
-    if (placements.length && !tidy.placements.length) reasons.push("가리키는 범위가 너무 넓어 동그라미를 그리지 않았어요.");
     return {
       findingId: finding.id,
       number: index + 1,
       classification: finding.classification,
       ...style,
-      placements: tidy.placements,
-      hiddenCount: tidy.hiddenCount,
-      reason: tidy.placements.length ? "" : [...new Set(reasons)].join(" "),
+      placements,
+      reason: placements.length ? "" : [...new Set(reasons)].join(" "),
     };
   });
-}
-
-// 글자 위치가 있으면 선 같은 형상은 빼고, 너무 큰 원·겹친 원을 없앤 뒤 최대 3개만 남깁니다.
-function tidyPlacements(placements) {
-  let list = placements.filter((item) => item.radius <= MAX_RADIUS);
-  if (list.some((item) => item.isText)) list = list.filter((item) => item.isText);
-  const unique = [];
-  for (const item of list) {
-    const overlaps = unique.some((kept) => kept.page === item.page
-      && Math.hypot(kept.x - item.x, (kept.y - item.y) * (item.pageHeight / item.pageWidth)) < Math.max(kept.radius, item.radius));
-    if (!overlaps) unique.push(item);
-  }
-  const kept = unique.slice(0, MAX_PLACEMENTS_PER_FINDING).map(({ isText, ...item }) => item);
-  return { placements: kept, hiddenCount: unique.length - kept.length };
-}
-
-const SEVERITY = ["tone-red", "tone-yellow", "tone-blue"];
-
-function enclose(a, b, ratio) {
-  const dx = b.x - a.x;
-  const dy = (b.y - a.y) * ratio;
-  const distance = Math.hypot(dx, dy);
-  if (distance + b.radius <= a.radius) return a;
-  if (distance + a.radius <= b.radius) return b;
-  const radius = (distance + a.radius + b.radius) / 2;
-  const move = (radius - a.radius) / distance;
-  return { x: a.x + dx * move, y: a.y + (dy * move) / ratio, radius };
-}
-
-// 여러 피드백의 동그라미가 서로 겹치면 하나의 동그라미로 합치고 번호표만 위아래로 나란히 둡니다.
-// 합쳐진 동그라미는 가장 심각한 색(빨강 → 노랑 → 파랑) 피드백이 그리고, 나머지는 번호표만 보여요.
-export function mergeOverlappingMarkers(markers) {
-  const items = markers.flatMap((marker) => marker.placements.map((placement) => ({ marker, placement })));
-  const groups = [];
-  for (const item of items) {
-    const { placement } = item;
-    const ratio = placement.pageHeight / placement.pageWidth;
-    const group = groups.find((entry) => entry.page === placement.page
-      && Math.hypot(entry.circle.x - placement.x, (entry.circle.y - placement.y) * ratio) < entry.circle.radius + placement.radius);
-    if (group) {
-      group.members.push(item);
-      group.circle = enclose(group.circle, placement, ratio);
-    } else {
-      groups.push({ page: placement.page, ratio, circle: { x: placement.x, y: placement.y, radius: placement.radius }, members: [item] });
-    }
-  }
-  // 합친 동그라미가 다른 묶음과 새로 겹칠 수 있어 한 번 더 합쳐요.
-  for (let merged = true; merged;) {
-    merged = false;
-    for (let i = 0; i < groups.length && !merged; i += 1) {
-      for (let j = i + 1; j < groups.length && !merged; j += 1) {
-        const [a, b] = [groups[i], groups[j]];
-        if (a.page !== b.page) continue;
-        if (Math.hypot(a.circle.x - b.circle.x, (a.circle.y - b.circle.y) * a.ratio) >= a.circle.radius + b.circle.radius) continue;
-        a.members.push(...b.members);
-        a.circle = enclose(a.circle, b.circle, a.ratio);
-        groups.splice(j, 1);
-        merged = true;
-      }
-    }
-  }
-  for (const group of groups) {
-    const members = [...new Map(group.members.map((item) => [item.marker.number, item])).values()]
-      .sort((a, b) => SEVERITY.indexOf(a.marker.color) - SEVERITY.indexOf(b.marker.color) || a.marker.number - b.marker.number);
-    const seen = new Set(members.map((item) => item.placement));
-    for (const item of group.members) {
-      if (!seen.has(item.placement)) item.placement.hidden = true;
-    }
-    members.forEach((item, row) => {
-      Object.assign(item.placement, group.members.length > 1 ? { ...group.circle } : {});
-      item.placement.labelOnly = row > 0;
-      item.placement.labelRow = row;
-    });
-  }
-  return markers;
 }
 
 // ② 결과가 가리키는 페이지 번호 목록입니다. 페이지가 없는 항목이 있으면 null(전체 페이지)을 돌려줍니다.

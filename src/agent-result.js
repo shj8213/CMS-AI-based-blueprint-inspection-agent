@@ -56,8 +56,7 @@ function checkConfirmation(record, label) {
 
 function validateReviewResult(data) {
   const statuses = ["검토 완료", "부분 완료", "입력 필요"];
-  // '질문'은 홈페이지 코드 점검만 써요. 도면만으로 알 수 없는 것을 사람에게 물어봐요.
-  const classifications = ["틀림", "확인 필요", "질문"];
+  const classifications = ["틀림", "확인 필요"];
   const issueTypes = ["누락", "읽기 불확실", "연결 불확실", "표기 불일치"];
   const confidences = ["높음", "중간", "낮음"];
   if (!statuses.includes(data.status)) {
@@ -101,13 +100,6 @@ function validateReviewResult(data) {
     }
     if (finding.intent_hypothesis != null && typeof finding.intent_hypothesis !== "string") {
       throw new AgentResultError(`${label}의 intent_hypothesis는 글자여야 해요.`);
-    }
-    if (finding.classification === "질문" || finding.question != null) {
-      const question = finding.question;
-      if (!isRecord(question) || typeof question.text !== "string" || !Array.isArray(question.choices)
-        || !question.choices.length || question.choices.some((choice) => typeof choice !== "string")) {
-        throw new AgentResultError(`${label}의 질문(question)에는 text 글자와 choices 글자 목록이 필요해요.`);
-      }
     }
     checkList(finding, "analysis_item_ids", `${label}의 ② 항목 ID`);
     if (!finding.analysis_item_ids || finding.analysis_item_ids.some((id) => typeof id !== "string")) {
