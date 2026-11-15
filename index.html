@@ -592,6 +592,52 @@
       .feedback-list li:hover { transform: translateX(3px); }
       .back-button { transition: background .2s, transform .2s; }
       .back-button:hover { transform: translateX(-2px); }
+      /* 디자인 다듬기: 업로드·결과 화면 */
+      @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+      @keyframes bar-shine { from { background-position: -120px 0; } to { background-position: 220px 0; } }
+      @keyframes ring { 0% { box-shadow: 0 0 0 0 rgba(247, 103, 7, .45); } 100% { box-shadow: 0 0 0 12px rgba(247, 103, 7, 0); } }
+      @keyframes slide-in { from { opacity: 0; transform: translateX(22px); } to { opacity: 1; transform: none; } }
+      @keyframes open-down { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+      .drop-area { transition: border-color .25s, background .25s, transform .25s, box-shadow .25s; }
+      .drop-area:hover { border-color: #f76707; background: #fff4e6; transform: translateY(-2px); box-shadow: 0 10px 24px rgba(247, 103, 7, .12); }
+      .drop-area.dragging { transform: scale(1.015); box-shadow: 0 0 0 6px rgba(247, 103, 7, .14); }
+      .upload-icon { animation: bob 3s ease-in-out infinite; }
+      .drop-area:hover .upload-icon, .drop-area.dragging .upload-icon { animation-duration: 1.2s; }
+      .select-button, .start-button, .workflow-action { transition: background .2s, transform .15s, box-shadow .2s, border-color .2s; }
+      .select-button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(23, 32, 51, .08); }
+      .start-button:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(247, 103, 7, .28); }
+      .start-button:active:not(:disabled), .select-button:active:not(:disabled) { transform: scale(.98); }
+      .start-button:not(:disabled) { animation: ring 2.2s ease-out 1; }
+      .progress-fill { background-image: linear-gradient(90deg, rgba(255, 255, 255, 0) 0, rgba(255, 255, 255, .55) 50%, rgba(255, 255, 255, 0) 100%), linear-gradient(90deg, #ffa94d, #f76707); background-size: 120px 100%, 100% 100%; background-repeat: no-repeat; animation: bar-shine 1.4s linear infinite; }
+      .more-info > summary { transition: color .2s; }
+      .more-info > summary:hover { color: #e8590c; }
+      .more-info[open] > .more-info-body, .agent-details[open] > .agent-details-content { animation: open-down .3s ease both; }
+      .history-list li { animation: pop-in .35s ease both; transition: background .2s, transform .2s; }
+      .history-list li:hover { transform: translateX(3px); }
+      #review-screen:not([hidden]) { animation: fade-up .5s ease both; }
+      .review-header { animation: pop-in .45s ease both; }
+      .review-layout > * { animation: pop-in .55s ease both; }
+      .review-layout > :nth-child(2) { animation-name: slide-in; animation-delay: .12s; }
+      .reading-results, .agent-results, .workflow-card { transition: box-shadow .25s, border-color .25s, transform .25s; }
+      .reading-results:hover, .agent-results:hover { box-shadow: 0 14px 34px rgba(34, 54, 88, .09); }
+      .workflow-card:hover { border-color: #ffd8a8; box-shadow: 0 6px 18px rgba(247, 103, 7, .08); }
+      .review-finding { transition: border-color .2s, box-shadow .2s, transform .2s; }
+      .review-finding:hover { border-color: #ffc078; box-shadow: 0 6px 16px rgba(247, 103, 7, .1); transform: translateY(-2px); }
+      .feedback-marker { transition: opacity .15s, box-shadow .15s, transform .2s; }
+      .feedback-marker:hover { transform: translate(-50%, -50%) scale(1.25); opacity: 1; }
+      #drawing-preview .marker circle { transition: fill .2s; }
+      #drawing-preview .marker.active circle { animation: ring 1.6s ease-out infinite; }
+      .agent-overview div { transition: transform .2s, background .2s; }
+      .agent-overview div:hover { transform: translateY(-2px); background: #eef3fb; }
+      .agent-details { transition: border-color .2s; }
+      .agent-details:hover { border-color: #ffc078; }
+      tbody tr { transition: background .15s; }
+      tbody tr:hover { background: #fff6ec; }
+      .finding-verdict .select-button[aria-pressed="true"] { animation: pop-in .25s ease both; }
+      @media (prefers-reduced-motion: reduce) {
+        .upload-icon, .progress-fill, .start-button:not(:disabled), .more-info-body, .agent-details-content, .history-list li, #review-screen, .review-header, .review-layout > *, .finding-verdict .select-button, #drawing-preview .marker.active circle { animation: none !important; }
+        .drop-area:hover, .drop-area.dragging, .select-button:hover, .start-button:hover, .review-finding:hover, .agent-overview div:hover, .history-list li:hover { transform: none; }
+      }
       @media (prefers-reduced-motion: reduce) {
         #intro-screen .hero::before, #intro-screen .hero::after, .cta-button::after, .hero h1 strong, .steps li.on, .review-finding, .feedback-list li { animation: none !important; }
         .cta-button:hover, .feature-card:hover, .flow-card:hover, .brand:hover, .back-button:hover { transform: none; }
