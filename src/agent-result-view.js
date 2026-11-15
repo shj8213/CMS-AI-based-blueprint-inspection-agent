@@ -199,12 +199,12 @@ function finishNotes(markers, drawn, sizeMismatch) {
     if (drawn.has(marker.number)) {
       const shown = marker.placements.filter((item) => item.drawn);
       const pagesText = [...new Set(shown.map((item) => item.page))].join(", ");
-      const how = shown.some((item) => item.source === "text") ? "PDF 글자 위치로 찾은" : "분석 자료의 좌표로 그린";
+      const how = shown.some((item) => item.source === "text") ? "글자 위치" : "좌표";
       const extra = shown.some((item) => item.candidate)
-        ? ` (같은 글자가 ${shown.length}곳이라 점선 후보로 모두 표시)`
-        : shown.length > 1 ? ` (관련 위치 ${shown.length}곳)` : "";
-      const hidden = marker.hiddenCount ? ` · 나머지 ${marker.hiddenCount}곳은 위치 설명을 보세요` : "";
-      setLocationNote(marker, `도면 표시: ${pagesText}페이지의 ${marker.number}${marker.symbol} 동그라미 · ${how} 위치${extra}${hidden}`, false);
+        ? ` · 후보 ${shown.length}곳`
+        : shown.length > 1 ? ` · ${shown.length}곳` : "";
+      const hidden = marker.hiddenCount ? ` · 그 밖 ${marker.hiddenCount}곳은 ‘자세히’` : "";
+      setLocationNote(marker, `도면 표시: ${pagesText}페이지 · ${how}${extra}${hidden}`, false);
     } else if (marker.placements.length && sizeMismatch) {
       setLocationNote(marker, "위치 확인 필요 · 원본 PDF의 페이지 크기가 ② 결과와 달라 표시하지 않았어요.", true);
     } else {
@@ -357,7 +357,7 @@ async function renderFeedbackDrawing(review, analysis, coordinateMarkers, file, 
 
   finishNotes(markers, drawn, sizeMismatch);
   if (drawn.size) {
-    status.textContent = `피드백 ${markers.length}개 중 ${drawn.size}개를 도면 위에 표시했어요. 빨강(!)은 틀림, 노랑(?)은 확인 필요, 점선은 같은 글자가 여러 곳이라 후보로 표시한 위치예요. 참고 표시이니 원본 도면과 직접 비교해 주세요.`;
+    status.textContent = `${drawn.size}/${markers.length}개 표시 · 빨강(!) 틀림 · 노랑(?) 확인 필요 · 점선은 후보 위치`;
   } else if (sizeMismatch) {
     status.textContent = "② 결과의 페이지 크기가 원본 PDF와 달라 동그라미를 그리지 않았어요.";
   } else {
@@ -444,25 +444,31 @@ function renderReviewResult(data, responseSummary, message, analysisText) {
       card.append(note, locate);
       card.addEventListener("click", (event) => {
         if (!card.classList.contains("located")) return;
-        if (event.target.closest("button") || window.getSelection?.().toString()) return;
+        if (event.target.closest("button, details") || window.getSelection?.().toString()) return;
         highlightFinding(String(marker.number), { scrollTo: "marker" });
       });
-      addReviewField(card, "② 항목 ID", finding.analysis_item_ids.join(", "), "없음");
-      addReviewField(card, "위치", finding.location);
-      addReviewField(card, "무엇이 문제인지", finding.what);
-      addReviewField(card, "왜 확인해야 하는지", finding.why);
-      addReviewField(card, "근거", finding.basis);
-      addReviewField(card, "어떻게 확인할지", finding.how_to_resolve);
-      addReviewField(card, "확인한 내용", finding.evidence);
+      addReviewField(card, "문제", finding.what);
+      addReviewField(card, "이유", finding.why);
+      addReviewField(card, "고칠 방법", finding.how_to_resolve);
+      const more = document.createElement("details");
+      more.className = "finding-more";
+      const moreTitle = document.createElement("summary");
+      moreTitle.textContent = "자세히";
+      more.append(moreTitle);
+      addReviewField(more, "위치", finding.location);
+      addReviewField(more, "② 항목 ID", finding.analysis_item_ids.join(", "), "없음");
+      addReviewField(more, "근거", finding.basis);
+      addReviewField(more, "확인한 내용", finding.evidence);
       if (finding.intent_hypothesis) {
         addReviewField(
-          card,
+          more,
           "가능한 의도(추정)",
           finding.intent_hypothesis.replace(/^(?:가능한 의도\(추정\):\s*)+/, ""),
         );
       }
-      addReviewField(card, "판단 근거·신뢰도", `${finding.confidence} · ${finding.confidence_reason}`);
-      addReviewField(card, "다음 확인", finding.next_check, "더 확인할 내용 없음");
+      addReviewField(more, "판단 근거·신뢰도", `${finding.confidence} · ${finding.confidence_reason}`);
+      addReviewField(more, "다음 확인", finding.next_check, "더 확인할 내용 없음");
+      card.append(more);
       return card;
     },
   );

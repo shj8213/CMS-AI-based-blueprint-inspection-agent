@@ -133,11 +133,11 @@ function checkChainSums(texts, lines) {
       analysis_item_ids: [total.text.id],
       location: where(total.text),
       what: `전체 치수 ${total.text.text} ≠ 직렬 치수 합계 ${format(sum)}`,
-      why: `같은 구간을 잇는 직렬 치수 ${parts} = ${format(sum)}인데 전체 치수는 ${total.text.text}로 적혀 있어요. 둘 중 하나는 틀린 값이에요.`,
+      why: `${parts} = ${format(sum)}인데 전체는 ${total.text.text}예요.`,
       evidence: `전체 치수선과 직렬 치수선의 양 끝 좌표가 같아요(x ${Math.round(total.x0)}~${Math.round(total.x1)}).`,
       confidence: "높음",
       confidence_reason: "치수선 끝 좌표가 서로 정확히 이어지고 숫자도 파일에 저장된 값이라 계산 결과가 분명해요.",
-      how_to_resolve: "설계 의도에 맞는 길이를 확인해 전체 치수나 직렬 치수 중 틀린 쪽을 고쳐 주세요.",
+      how_to_resolve: "전체 치수나 직렬 치수 중 틀린 쪽을 고쳐 주세요.",
       next_check: "원본 도면에서 전체 치수와 직렬 치수가 같은 두 끝을 잇는지 확인해 주세요.",
     });
   }
@@ -190,8 +190,8 @@ function checkFitSizes(rows) {
         ? `${fit} 지름: 도면 치수 ⌀${format(first.size)} ≠ 주석 ⌀${format(second.size)}`
         : `같은 끼워맞춤 기호 ${fit}가 서로 다른 지름(${[...sizes].map(format).join(", ")})에 쓰였어요.`,
       why: certain
-        ? `${fit}가 붙은 지름은 도면 치수와 주석에 한 번씩만 나오는데 값이 달라요. 같은 부위를 다르게 적었을 가능성이 커요.`
-        : "다른 부위에 같은 기호를 쓴 것일 수도 있어 코드로는 같은 부위인지 확정할 수 없어요.",
+        ? `같은 ${fit} 부위의 지름이 치수와 주석에서 달라요.`
+        : "같은 부위인지 코드로는 확정할 수 없어요.",
       evidence: certain
         ? `치수 "${first.row.text}", 주석 "${second.row.text}"`
         : items.map((item) => `"${item.row.text}"`).join(", "),
@@ -199,7 +199,7 @@ function checkFitSizes(rows) {
       confidence_reason: certain
         ? "숫자는 파일 값 그대로지만, 주석과 치수가 같은 부위라는 판단은 기호가 한 번씩만 나온다는 점에 기대요."
         : "같은 기호가 여러 번 나와 어느 것끼리 같은 부위인지 알 수 없어요.",
-      how_to_resolve: "주석이 가리키는 부위와 지름 치수를 맞춰 한쪽 값을 고쳐 주세요.",
+      how_to_resolve: "치수와 주석 중 틀린 쪽을 고쳐 주세요.",
       next_check: `원본 도면에서 ${fit} 주석이 가리키는 부위의 지름을 확인해 주세요.`,
     });
   }
@@ -225,16 +225,16 @@ function checkKeywayWidths(rows) {
     classification: certain ? "틀림" : "확인 필요",
     analysis_item_ids: shown.flatMap((item) => item.ids).slice(0, 3),
     location: where(shown[0].row.pieces[0]),
-    what: `키홈 폭이 서로 다르게 적혀 있어요(${shown.map((item) => format(item.width)).join(", ")}).`,
+    what: `키홈 폭: ${shown.map((item) => format(item.width)).join(" ≠ ")}`,
     why: certain
-      ? "도면에 키홈 단면이 하나뿐인데 주석마다 폭이 달라요. 같은 키홈을 다르게 적은 것이에요."
-      : "단면이 여러 개라 서로 다른 키홈일 수도 있어 코드로는 확정할 수 없어요.",
+      ? "키홈은 하나인데 폭이 서로 달라요."
+      : "서로 다른 키홈일 수도 있어요.",
     evidence: shown.map((item) => `"${item.row.text}"`).join(", "),
     confidence: certain ? "중간" : "낮음",
     confidence_reason: certain
       ? "글자 값은 파일 그대로지만, 같은 키홈이라는 판단은 단면 표시가 하나라는 점에 기대요."
       : "키홈이 여러 개일 수 있어요.",
-    how_to_resolve: "키 규격에 맞는 폭 하나로 주석과 단면 치수를 맞춰 주세요.",
+    how_to_resolve: "폭을 하나로 맞춰 주세요.",
     next_check: "원본 도면의 키홈 단면 치수와 주석을 함께 확인해 주세요.",
   }];
 }

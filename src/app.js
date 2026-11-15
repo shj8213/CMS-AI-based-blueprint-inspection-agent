@@ -884,12 +884,11 @@ codeReadButton.addEventListener("click", async () => {
     stopProgress(true);
     showReview(false, file.name);
     updateFeedbackAction();
-    const count = JSON.parse(response).elements.length;
     const wrong = codeReview.findings.filter((finding) => finding.classification === "틀림").length;
     const seconds = ((performance.now() - started) / 1000).toFixed(1);
     $("#agent-result-progress").textContent =
-      `PDF를 코드로 읽고 점검했어요(${seconds}초, 요소 ${count}개, 틀림 ${wrong}건·확인 필요 ${codeReview.findings.length - wrong}건). `
-      + "코드 점검은 숫자끼리 맞는지만 봐요. 나머지까지 보려면 ‘피드백 받기’로 원본 PDF와 이 자료를 ③에 보내요(선택)."
+      `PDF를 코드로 읽고 점검했어요(${seconds}초, 틀림 ${wrong}건·확인 필요 ${codeReview.findings.length - wrong}건). `
+      + "더 자세한 검토는 ‘피드백 받기’(선택)."
       + (saved ? "" : " 브라우저에 저장하지는 못했어요.");
   } catch (error) {
     stopProgress(false);

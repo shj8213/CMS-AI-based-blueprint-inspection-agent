@@ -1322,7 +1322,7 @@ agentTest("화면: ③ 피드백 동그라미를 해당 페이지 도면 위에 
     // "Hello blueprint"는 (20, 50)에서 시작하는 글자라 동그라미가 그 오른쪽 위쪽에 있어야 해요.
     assert(parseFloat(byText.style.left) > 20 / 300 * 100 && parseFloat(byText.style.top) < 50 / 240 * 100 && parseFloat(byText.style.top) > 20 / 240 * 100,
       `${byText.style.left} ${byText.style.top}`);
-    assert(cards[3].textContent.includes("PDF 글자 위치로 찾은") && !cards[3].querySelector(".finding-locate").hidden);
+    assert(cards[3].textContent.includes("글자 위치") && !cards[3].querySelector(".finding-locate").hidden);
     assert(cards[2].textContent.includes("찾지 못했어요"), cards[2].textContent);
     assert(getComputedStyle(cards[1]).backgroundColor === "rgba(0, 0, 0, 0)" || getComputedStyle(cards[1]).backgroundColor === "rgb(255, 255, 255)",
       "카드 전체가 색으로 칠해지면 안 돼요.");
@@ -1914,7 +1914,7 @@ agentTest("화면: ③ V4 JSON의 쉬운 지적·근거·한계를 표시하고 
   assert(app.querySelector("#agent-result-output").hidden);
   assert(app.querySelector("#review-agent-status").textContent === "부분 완료");
   assert(app.querySelector("#review-agent-human-status").textContent === "미확인");
-  assert(app.querySelector("#review-agent-findings").textContent.includes("어떻게 확인할지"));
+  assert(app.querySelector("#review-agent-findings").textContent.includes("고칠 방법"));
   const findingsText = app.querySelector("#review-agent-findings").textContent;
   assert(findingsText.includes("가능한 의도(추정)"));
   assert(findingsText.includes("다른 가능성"));
