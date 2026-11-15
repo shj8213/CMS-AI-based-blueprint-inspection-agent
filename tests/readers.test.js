@@ -27,7 +27,7 @@ import { getNetlifyConfig } from "../netlify/edge-functions/studio-config.js";
 import { config as netlifyStudioTokenConfig, handleNetlifyStudioToken } from "../netlify/edge-functions/studio-token.js";
 import { createAnalysisHistory, fileFingerprint } from "../src/analysis-history.js";
 import { buildReferenceExamples } from "../src/reference-examples.js";
-import { buildFeedbackMarkers, findTextMatches, originDirection, pageMatches } from "../src/feedback-markers.js";
+import { buildFeedbackMarkers, findTextMatches, mergeOverlappingMarkers, originDirection, pageMatches } from "../src/feedback-markers.js";
 
 const TEST_HISTORY_KEY = "blueprint-analysis-history-test";
 localStorage.removeItem(TEST_HISTORY_KEY);
@@ -1244,6 +1244,31 @@ agentTest("도면 위 표시: 한 피드백은 글자 위치 위주로 최대 3�
   assert(many.hiddenCount === 2, `숨긴 위치 수: ${many.hiddenCount}`);
   assert(!huge.placements.length && huge.reason.includes("너무 넓어"), huge.reason);
   assert(small.placements.length === 1, "글자가 없으면 작은 선은 표시해요.");
+});
+
+agentTest("도면 위 표시: 서로 겹치는 동그라미는 하나로 합치고 번호표만 나란히 둠", async () => {
+  const page = { page_number: 1, width: 600, height: 400, coordinate_unit: "pt", coordinate_origin: "왼쪽 위" };
+  const text = (id, x0, y0) => ({ id, page_number: 1, raw_text: id, location: { coordinate_unit: "pt", bbox: [x0, y0, x0 + 60, y0 + 20] } });
+  const analysis = { pages: [page], elements: [text("N1", 100, 100), text("N2", 110, 104), text("F1", 400, 300)] };
+  const review = { findings: [
+    { id: "R1", classification: "확인 필요", analysis_item_ids: ["N1"] },
+    { id: "R2", classification: "틀림", analysis_item_ids: ["N2"] },
+    { id: "R3", classification: "질문", analysis_item_ids: ["F1"] },
+  ] };
+  const [first, second, far] = mergeOverlappingMarkers(buildFeedbackMarkers(review, analysis));
+  const [a, b, c] = [first.placements[0], second.placements[0], far.placements[0]];
+  assert(a.x === b.x && a.y === b.y && a.radius === b.radius, "겹친 두 동그라미는 같은 원 하나가 돼야 해요.");
+  assert(b.labelOnly === false && a.labelOnly === true, "더 심각한 틀림(2번)이 원을 그리고 1번은 번호표만 보여요.");
+  assert(a.labelRow === 1 && b.labelRow === 0, "번호표는 위아래로 나란히 둬야 해요.");
+  assert(!c.labelOnly && c.labelRow === 0 && c.x !== a.x, "떨어진 동그라미는 그대로예요.");
+  const ratio = page.height / page.width;
+  for (const [element, placement] of [[analysis.elements[0], a], [analysis.elements[1], b]]) {
+    const [x0, y0, x1, y1] = element.location.bbox;
+    const dx = (x0 + x1) / 2 / page.width - a.x;
+    const dy = ((y0 + y1) / 2 / page.height - a.y) * ratio;
+    assert(Math.hypot(dx, dy) < a.radius, `합친 원이 ${element.id}를 감싸야 해요.`);
+    assert(placement.radius >= 0);
+  }
 });
 
 agentTest("도면 위 표시: ② 좌표가 없으면 PDF 글자 위치로 동그라미를 찾음", async () => {

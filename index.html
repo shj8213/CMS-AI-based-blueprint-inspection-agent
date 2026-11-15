@@ -413,6 +413,10 @@
       .feedback-marker.candidate { border-style: dashed; }
       .feedback-marker.linked { border-width: 5px; box-shadow: 0 0 0 4px rgba(31, 95, 191, .45); }
       .feedback-marker:focus-visible { outline: 3px solid #1f5fbf; outline-offset: 3px; }
+      .feedback-marker.label-only { border-color: transparent; pointer-events: none; }
+      .feedback-marker.label-only.linked { border-color: transparent; box-shadow: none; }
+      .feedback-marker.label-only .feedback-marker-label { pointer-events: auto; cursor: pointer; }
+      .feedback-marker.label-only.linked .feedback-marker-label { box-shadow: 0 0 0 3px rgba(31, 95, 191, .55); }
       .feedback-marker-label { position: absolute; left: 100%; top: -6px; margin-left: 2px; padding: 0 5px; border-radius: 999px; font: 800 12px/18px sans-serif; white-space: nowrap; }
       .feedback-marker.tone-red .feedback-marker-label { background: #c62828; color: #fff; }
       .feedback-marker.tone-yellow .feedback-marker-label { background: #ffd43b; color: #2b2100; }

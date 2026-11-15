@@ -246,6 +246,67 @@ function tidyPlacements(placements) {
   return { placements: kept, hiddenCount: unique.length - kept.length };
 }
 
+const SEVERITY = ["tone-red", "tone-yellow", "tone-blue"];
+
+function enclose(a, b, ratio) {
+  const dx = b.x - a.x;
+  const dy = (b.y - a.y) * ratio;
+  const distance = Math.hypot(dx, dy);
+  if (distance + b.radius <= a.radius) return a;
+  if (distance + a.radius <= b.radius) return b;
+  const radius = (distance + a.radius + b.radius) / 2;
+  const move = (radius - a.radius) / distance;
+  return { x: a.x + dx * move, y: a.y + (dy * move) / ratio, radius };
+}
+
+// 여러 피드백의 동그라미가 서로 겹치면 하나의 동그라미로 합치고 번호표만 위아래로 나란히 둡니다.
+// 합쳐진 동그라미는 가장 심각한 색(빨강 → 노랑 → 파랑) 피드백이 그리고, 나머지는 번호표만 보여요.
+export function mergeOverlappingMarkers(markers) {
+  const items = markers.flatMap((marker) => marker.placements.map((placement) => ({ marker, placement })));
+  const groups = [];
+  for (const item of items) {
+    const { placement } = item;
+    const ratio = placement.pageHeight / placement.pageWidth;
+    const group = groups.find((entry) => entry.page === placement.page
+      && Math.hypot(entry.circle.x - placement.x, (entry.circle.y - placement.y) * ratio) < entry.circle.radius + placement.radius);
+    if (group) {
+      group.members.push(item);
+      group.circle = enclose(group.circle, placement, ratio);
+    } else {
+      groups.push({ page: placement.page, ratio, circle: { x: placement.x, y: placement.y, radius: placement.radius }, members: [item] });
+    }
+  }
+  // 합친 동그라미가 다른 묶음과 새로 겹칠 수 있어 한 번 더 합쳐요.
+  for (let merged = true; merged;) {
+    merged = false;
+    for (let i = 0; i < groups.length && !merged; i += 1) {
+      for (let j = i + 1; j < groups.length && !merged; j += 1) {
+        const [a, b] = [groups[i], groups[j]];
+        if (a.page !== b.page) continue;
+        if (Math.hypot(a.circle.x - b.circle.x, (a.circle.y - b.circle.y) * a.ratio) >= a.circle.radius + b.circle.radius) continue;
+        a.members.push(...b.members);
+        a.circle = enclose(a.circle, b.circle, a.ratio);
+        groups.splice(j, 1);
+        merged = true;
+      }
+    }
+  }
+  for (const group of groups) {
+    const members = [...new Map(group.members.map((item) => [item.marker.number, item])).values()]
+      .sort((a, b) => SEVERITY.indexOf(a.marker.color) - SEVERITY.indexOf(b.marker.color) || a.marker.number - b.marker.number);
+    const seen = new Set(members.map((item) => item.placement));
+    for (const item of group.members) {
+      if (!seen.has(item.placement)) item.placement.hidden = true;
+    }
+    members.forEach((item, row) => {
+      Object.assign(item.placement, group.members.length > 1 ? { ...group.circle } : {});
+      item.placement.labelOnly = row > 0;
+      item.placement.labelRow = row;
+    });
+  }
+  return markers;
+}
+
 // ② 결과가 가리키는 페이지 번호 목록입니다. 페이지가 없는 항목이 있으면 null(전체 페이지)을 돌려줍니다.
 export function referencedPages(review, analysis) {
   const elements = new Map((analysis?.elements ?? []).map((element) => [element?.id, element]));

@@ -6,7 +6,7 @@ import {
   parseAgentResult,
 } from "./agent-result.js";
 import { CODE_REVIEW_BASIS } from "./code-review.js";
-import { buildFeedbackMarkers, pageMatches, referencedPages } from "./feedback-markers.js";
+import { buildFeedbackMarkers, mergeOverlappingMarkers, pageMatches, referencedPages } from "./feedback-markers.js";
 
 const PAGE_SIZE = 50;
 const $ = (selector) => document.querySelector(selector);
@@ -338,7 +338,7 @@ async function renderFeedbackDrawing(review, analysis, coordinateMarkers, file, 
       if (pageText) pdfPages.set(number, pageText);
     }
     if (!isCurrent()) return;
-    markers = buildFeedbackMarkers(review, analysis, pdfPages);
+    markers = mergeOverlappingMarkers(buildFeedbackMarkers(review, analysis, pdfPages));
     const pageNumbers = [...new Set(markers.flatMap((marker) => marker.placements.map((item) => item.page)))]
       .sort((a, b) => a - b);
     if (pageNumbers.length) status.textContent = "도면 그림을 준비하는 중이에요…";
@@ -378,13 +378,17 @@ async function renderFeedbackDrawing(review, analysis, coordinateMarkers, file, 
     for (const marker of markers) {
       for (const placement of marker.placements) {
         if (placement.page !== page.pageNumber) continue;
+        if (placement.hidden) {
+          placement.drawn = true;
+          continue;
+        }
         if (!pageMatches(placement, page)) {
           sizeMismatch = true;
           continue;
         }
         const button = document.createElement("button");
         button.type = "button";
-        button.className = `feedback-marker ${marker.color}${placement.candidate ? " candidate" : ""}`;
+        button.className = `feedback-marker ${marker.color}${placement.candidate ? " candidate" : ""}${placement.labelOnly ? " label-only" : ""}`;
         button.dataset.findingNumber = String(marker.number);
         button.dataset.source = placement.source;
         button.style.left = `${placement.x * 100}%`;
@@ -396,6 +400,7 @@ async function renderFeedbackDrawing(review, analysis, coordinateMarkers, file, 
         const label = document.createElement("span");
         label.className = "feedback-marker-label";
         label.textContent = `${marker.number}${marker.symbol}`;
+        if (placement.labelRow) label.style.top = `${placement.labelRow * 22 - 6}px`;
         button.append(label);
         button.addEventListener("click", () => highlightFinding(String(marker.number), { scrollTo: "card" }));
         frame.append(button);
