@@ -2310,6 +2310,7 @@ test("화면: 코드 점검으로 틀린 숫자를 바로 빨간 동그라미로
     assert([...app.querySelectorAll(".feedback-marker")].filter((marker) => !marker.classList.contains("tone-blue"))
       .every((marker) => marker.classList.contains("tone-red")), "틀림은 빨강으로 그려야 해요.");
     assert(!app.querySelector("#feedback-actions").hidden, "③ 피드백은 선택으로 계속 받을 수 있어야 해요.");
+    assert(!app.querySelector("#code-scope-note").hidden, "코드 점검이 못 보는 범위를 안내해야 해요.");
     const viewport = app.querySelector(".review-drawing-viewport");
     const close = (a, b, tolerance) => Math.abs(a - b) <= tolerance;
     const frameBox = () => viewport.querySelector(".review-drawing-frame").getBoundingClientRect();

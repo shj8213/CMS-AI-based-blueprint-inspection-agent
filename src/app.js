@@ -230,6 +230,7 @@ function updateFeedbackAction() {
     && Boolean(activeAnalysisEntry)
     && Boolean(activeAnalysisFile || activeAnalysisEntry.fingerprint);
   $("#feedback-actions").hidden = !available;
+  $("#code-scope-note").hidden = !available || !isCodeReadResponse(activeAnalysisEntry.response);
   $("#feedback-start-button").disabled = busy || !available;
 }
 
