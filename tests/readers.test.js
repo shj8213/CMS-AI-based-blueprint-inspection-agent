@@ -1270,8 +1270,8 @@ agentTest("도면 위 표시: 좌표가 확실한 피드백만 페이지별 빨�
   const markers = buildFeedbackMarkers(review, analysis);
   assert(JSON.stringify(analysis) === before, "② 결과를 바꾸면 안 돼요.");
   assert(markers.map((marker) => marker.number).join() === "1,2,3,4,5,6,7");
-  assert(markers[0].color === "tone-red" && markers[0].symbol === "!", "틀림은 빨강·! 이어야 해요.");
-  assert(markers[1].color === "tone-yellow" && markers[1].symbol === "?", "확인 필요는 노랑·? 이어야 해요.");
+  assert(markers[0].color === "tone-red" && !("symbol" in markers[0]), "틀림은 빨강이고 기호는 없어야 해요.");
+  assert(markers[1].color === "tone-yellow" && !("symbol" in markers[1]), "확인 필요는 노랑이고 기호는 없어야 해요.");
   const first = markers[0].placements[0];
   assert(first.page === 1 && Math.abs(first.x - 80 / 300) < 1e-9 && Math.abs(first.y - 30 / 240) < 1e-9, JSON.stringify(first));
   assert(first.radius > 0.2 && first.radius < 0.3, `범위를 감싸는 반지름이어야 해요: ${first.radius}`);
@@ -1425,12 +1425,12 @@ agentTest("화면: ③ 피드백 동그라미를 해당 페이지 도면 위에 
     assert(pages.join() === "1페이지,2페이지", pages.join());
     const marker = (number) => app.querySelector(`.feedback-marker[data-finding-number="${number}"]`);
     const [red, yellow, byText] = [marker(1), marker(2), marker(4)];
-    assert(red.classList.contains("tone-red") && red.textContent === "1!" && red.closest(".review-drawing-page").textContent.includes("1페이지"));
-    assert(yellow.classList.contains("tone-yellow") && yellow.textContent === "2?" && yellow.closest(".review-drawing-page").textContent.includes("2페이지"));
+    assert(red.classList.contains("tone-red") && red.textContent === "1" && red.closest(".review-drawing-page").textContent.includes("1페이지"));
+    assert(yellow.classList.contains("tone-yellow") && yellow.textContent === "2" && yellow.closest(".review-drawing-page").textContent.includes("2페이지"));
     const cards = app.querySelectorAll("#review-agent-findings .review-finding");
     assert(cards[2].textContent.includes("위치 확인 필요") && cards[2].querySelector(".finding-locate").hidden);
     assert(cards[0].textContent.includes("도면 표시: 1페이지") && cards[0].textContent.includes("좌표"));
-    assert(byText.dataset.source === "text" && byText.textContent === "4!" && byText.closest(".review-drawing-page").textContent.includes("1페이지"));
+    assert(byText.dataset.source === "text" && byText.textContent === "4" && byText.closest(".review-drawing-page").textContent.includes("1페이지"));
     // "Hello blueprint"는 (20, 50)에서 시작하는 글자라 동그라미가 그 오른쪽 위쪽에 있어야 해요.
     assert(parseFloat(byText.style.left) > 20 / 300 * 100 && parseFloat(byText.style.top) < 50 / 240 * 100 && parseFloat(byText.style.top) > 20 / 240 * 100,
       `${byText.style.left} ${byText.style.top}`);
