@@ -350,6 +350,7 @@
       .history-list .file-row .select-button { margin-left: auto; flex: 0 0 auto; }
       .history-list .remove-button { margin-left: 0; }
       .history-actions { margin-top: 10px; text-align: right; }
+      #memory-preview { white-space: pre-wrap; margin: 6px 0 0; }
       .verify-label { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; font-size: 14px; white-space: nowrap; }
       .reference-box { margin-top: 12px; padding: 12px; border: 1px solid #d8dee8; border-radius: 8px; }
       .reference-box p { margin: 0 0 8px; font-size: 15px; }
@@ -384,26 +385,60 @@
       .review-finding h4 { margin: 0 0 8px; font-size: 14px; }
       .review-finding p { margin: 6px 0; overflow-wrap: anywhere; white-space: pre-wrap; }
       .review-finding.tone-red { border-left: 5px solid #c62828; }
-      .review-finding.tone-orange { border-left: 5px solid #e8710a; }
+      .review-finding.tone-yellow { border-left: 5px solid #e0b000; }
+      .review-finding.tone-blue { border-left: 5px solid #1c6dd0; }
       .review-finding.linked { outline: 3px solid #1f5fbf; outline-offset: 2px; background: #f2f7ff; }
       .finding-badge { display: inline-block; min-width: 28px; padding: 1px 6px; border-radius: 999px; text-align: center; font-weight: 800; }
       .finding-badge.tone-red { background: #c62828; color: #fff; }
-      .finding-badge.tone-orange { background: #b34d00; color: #fff; }
+      .finding-badge.tone-yellow { background: #ffd43b; color: #2b2100; }
+      .finding-badge.tone-blue { background: #1c6dd0; color: #fff; }
       .finding-location-note { color: #1f5fbf; font-weight: 700; }
       .finding-location-note.missing { color: #8a5a00; }
       .review-drawing-page { margin: 12px 0; }
       .review-drawing-page figcaption { font-size: 13px; font-weight: 700; margin-bottom: 6px; }
-      .review-drawing-frame { position: relative; border: 1px solid #c3cee0; border-radius: 6px; overflow: hidden; }
+      .review-drawing-viewport { border: 1px solid #c3cee0; border-radius: 6px; overflow: hidden; }
+      .review-drawing-viewport.zoomed { overflow: auto; max-height: min(80vh, 900px); }
+      .review-drawing-frame { position: relative; width: 100%; }
+      .finding-more { margin-top: 6px; font-size: 13px; }
+      .finding-verdict { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; font-size: 13px; }
+      .finding-verdict .select-button[aria-pressed="true"] { background: #1f5fbf; color: #fff; }
+      .finding-more summary { cursor: pointer; font-weight: 700; }
+      .zoom-controls { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+      .marker-legend { display: grid; gap: 4px; margin: 0 0 12px; padding: 10px 12px; list-style: none; border-radius: 8px; background: #f4f6fb; font-size: 13px; color: #33415c; }
+      .marker-legend .legend-dot { display: inline-block; width: 12px; height: 12px; margin-right: 8px; vertical-align: -1px; border: 3px solid; border-radius: 50%; }
+      .marker-legend .legend-dot.tone-red { border-color: #c62828; }
+      .marker-legend .legend-dot.tone-yellow { border-color: #e0b000; }
+      .marker-legend .legend-dot.tone-blue { border-color: #1c6dd0; }
+      .marker-legend .legend-dot.candidate { border-color: #5b6b85; border-style: dashed; }
+      .zoom-button { min-width: 36px; padding: 4px 10px; border: 1px solid #c3cee0; border-radius: 6px; background: #fff; font: inherit; font-size: 14px; cursor: pointer; }
+      .zoom-button:disabled { opacity: .45; cursor: default; }
+      .zoom-hint { font-size: 12px; color: #5b6b85; }
+      .zoom-level { min-width: 48px; text-align: center; font-size: 13px; font-weight: 700; }
       .review-drawing-frame canvas { display: block; width: 100%; height: auto; }
-      .feedback-marker { position: absolute; aspect-ratio: 1; min-width: 22px; padding: 0; transform: translate(-50%, -50%); border: 3px solid; border-radius: 50%; background: transparent; cursor: pointer; }
+      .feedback-marker { position: absolute; aspect-ratio: 1; min-width: 22px; padding: 0; transform: translate(-50%, -50%); border: 2px solid; border-radius: 50%; background: transparent; cursor: pointer; opacity: .9; box-shadow: 0 0 0 1.5px rgba(255, 255, 255, .9), inset 0 0 0 1px rgba(255, 255, 255, .55); transition: opacity .15s, box-shadow .15s; }
       .feedback-marker.tone-red { border-color: #c62828; }
-      .feedback-marker.tone-orange { border-color: #e8710a; }
-      .feedback-marker.candidate { border-style: dashed; }
-      .feedback-marker.linked { border-width: 5px; box-shadow: 0 0 0 4px rgba(31, 95, 191, .45); }
+      .feedback-marker.tone-yellow { border-color: #e0b000; }
+      .feedback-marker.tone-blue { border-color: #1c6dd0; }
+      .feedback-marker.candidate { border-style: dashed; opacity: .75; }
+      .feedback-marker:hover { opacity: 1; }
+      .feedback-marker.linked { opacity: 1; border-width: 3px; box-shadow: 0 0 0 1.5px #fff, 0 0 0 5px rgba(31, 95, 191, .4); }
       .feedback-marker:focus-visible { outline: 3px solid #1f5fbf; outline-offset: 3px; }
-      .feedback-marker-label { position: absolute; left: 100%; top: -6px; margin-left: 2px; padding: 0 5px; border-radius: 999px; font: 800 12px/18px sans-serif; white-space: nowrap; }
+      .feedback-marker.label-only { border-color: transparent; pointer-events: none; }
+      .feedback-marker.label-only.linked { border-color: transparent; box-shadow: none; }
+      .feedback-marker.label-only { box-shadow: none; }
+      .feedback-marker.label-only .feedback-marker-label { pointer-events: auto; cursor: pointer; }
+      .feedback-marker.label-only.linked .feedback-marker-label { box-shadow: 0 0 0 3px rgba(31, 95, 191, .55); }
+      .feedback-marker-label { position: absolute; left: 100%; top: -6px; margin-left: 2px; padding: 0 6px; border-radius: 999px; font: 700 11px/17px sans-serif; white-space: nowrap; box-shadow: 0 0 0 1.5px #fff, 0 1px 3px rgba(0, 0, 0, .3); }
       .feedback-marker.tone-red .feedback-marker-label { background: #c62828; color: #fff; }
-      .feedback-marker.tone-orange .feedback-marker-label { background: #b34d00; color: #fff; }
+      .feedback-marker.tone-yellow .feedback-marker-label { background: #ffd43b; color: #2b2100; }
+      .feedback-marker.tone-blue .feedback-marker-label { background: #1c6dd0; color: #fff; }
+      .finding-question { margin: 8px 0; padding: 8px; background: #eef4fc; border-radius: 6px; }
+      .finding-question-text { margin: 0 0 6px; font-weight: 600; }
+      .finding-question-choices { display: flex; flex-wrap: wrap; gap: 6px; }
+      .finding-question-choices button[aria-pressed="true"] { background: #1c6dd0; color: #fff; border-color: #1c6dd0; }
+      .finding-question-answer { margin: 6px 0 0; font-size: 0.9em; color: #33415c; }
+      .finding-question-guide { margin: 8px 0 0; padding: 8px; background: #fff; border-radius: 6px; font-size: 0.9em; }
+      .finding-question-guide ul { margin: 4px 0 0; padding-left: 18px; }
 
       @media (max-width: 740px) {
         .page { width: min(100% - 28px, 540px); }
@@ -464,6 +499,8 @@
       #upload-screen .start-button:hover:not(:disabled) { background: #e8590c; }
       #upload-screen .start-button:disabled { background: #ffd8a8; }
       #feedback-start-button { background: #f76707; }
+      .problem-sheet { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; }
+      .problem-sheet .privacy-note { flex-basis: 100%; margin: 0; }
       #feedback-start-button:hover:not(:disabled) { background: #e8590c; }
       #feedback-start-button:disabled { background: #ffd8a8; }
       #upload-screen .select-button:hover { background: #fff4e6; }
@@ -596,7 +633,8 @@
               <p id="saved-match-text"></p>
               <button class="select-button" id="open-saved-match" type="button">저장된 결과 바로 보기</button>
             </div>
-            <button class="start-button" id="agent-start-button" type="button" disabled>도면 분석하기</button>
+            <button class="start-button" id="code-read-button" type="button" disabled>도면 분석하기</button>
+            <button class="start-button" id="agent-start-button" type="button" disabled hidden>② 분석하기</button>
             <button class="select-button local-read-button" id="start-button" type="button" disabled>이 브라우저에서만 읽기</button>
             <button class="select-button" id="cancel-agent" type="button" hidden>기다리기 중단</button>
           </section>
@@ -604,6 +642,7 @@
             <summary>도움말과 예제</summary>
             <div class="more-info-body">
               <p class="privacy-note">도면 분석을 선택하면 PDF가 Microsoft에 전송되고 사용량이 발생할 수 있어요. 첨부 파일은 대화의 마지막 활동 이후 28일 동안 보관될 수 있어요. DXF는 PDF로 변환해 주세요.</p>
+              <p class="privacy-note">‘도면 분석하기’는 일반(벡터) PDF의 선·원·글자 좌표를 이 브라우저에서 코드로 읽어 바로 점검해요. 전송 없이 몇 초면 끝나요. 이후 ‘피드백 받기’를 누를 때만 원본 PDF와 읽은 자료가 ③으로 전송돼요. 스캔(그림) PDF는 코드로 정확히 읽을 수 없어서, 전송 동의를 체크하면 Microsoft ②로 분석해요.</p>
               <p class="privacy-note">‘이 브라우저에서만 읽기’를 선택하면 파일을 외부로 보내지 않아요. 스캔 PDF의 글자는 OCR로 찾으므로 원본과 비교해 주세요.</p>
               <p class="privacy-note">확인용 예제 받기: <a href="./tests/fixtures/simple.dxf" download>DXF</a> · <a href="./tests/fixtures/simple.pdf" download>일반 PDF</a> · <a href="./tests/fixtures/scan.pdf" download>스캔 PDF</a></p>
               <p class="privacy-note">검토 시험용 DXF 받기: <a href="./tests/fixtures/review-a.dxf" download>예제 A</a> · <a href="./tests/fixtures/review-b.dxf" download>예제 B</a> · <a href="./tests/fixtures/review-c.dxf" download>예제 C</a> — 개인정보·기밀이 없는 가상 자료예요.</p>
@@ -626,6 +665,13 @@
             </div>
             <div class="history-actions">
               <button class="select-button" id="clear-history" type="button">저장된 결과 모두 삭제</button>
+            </div>
+          </section>
+          <section class="card upload-panel agent-entry" id="memory-panel" aria-labelledby="memory-title" hidden>
+            <h2 id="memory-title">검토 기억</h2>
+            <p class="privacy-note" id="memory-note">③ 검토가 끝나면 도면 종류·표기 모양·지적 요약(지적 카드에서 누른 ‘맞아요/아니에요’ 포함)만 이 브라우저에 저장해요(파일 이름·좌표는 제외, 표기 모양의 숫자는 가림). 지적 요약은 ③이 쓴 문장 그대로라 치수나 이름이 들어 있을 수 있어요. 이 브라우저를 쓰는 사람은 볼 수 있고, 동의해야만 다음 ③ 요청에 함께 보내요. 최근 20개까지 보관해요.</p>
+            <div class="history-actions">
+              <button class="select-button" id="clear-memory" type="button">검토 기억 모두 삭제 (0개)</button>
             </div>
           </section>
         </section>
@@ -676,7 +722,25 @@
             </div>
             <p class="read-message error" id="agent-result-error" role="alert"></p>
             <div id="feedback-actions" hidden>
-              <p class="privacy-note">피드백을 요청하면 원본 PDF와 ② 분석 결과가 Microsoft Copilot Studio의 ③으로 전송돼요.</p>
+              <p class="privacy-note">피드백을 요청하면 원본 PDF와 ② 분석 결과(문제지를 고르면 문제지도)가 Microsoft Copilot Studio의 ③으로 전송돼요.</p>
+              <div class="problem-sheet" id="problem-sheet">
+                <label class="select-button" for="problem-sheet-input">문제지(조립도) 대조·함께 보내기 (선택·초안)</label>
+                <input class="hidden-input" id="problem-sheet-input" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg">
+                <span id="problem-sheet-name">선택 안 함</span>
+                <button class="select-button" id="problem-sheet-remove" type="button" hidden>빼기</button>
+                <p class="privacy-note" id="problem-sheet-status" role="status"></p>
+                <p class="privacy-note">문제지 PDF에 ‘조립 정보’ 표(예: <code>Ø20 k6 : 베어링 6204</code>, <code>키홈 폭 6</code>, <code>축 전체 길이 118</code>)가 있으면 홈페이지가 전송 없이 도면 글자와 대조해요. 문제지는 부품이 어디에 끼워지는지 알려 주는 참고 자료로만 써요. 저장되지 않고, 기능사 문제지는 저작권이 있으니 저장소·공개 사이트에 올리지 마세요.</p>
+              </div>
+              <div class="saved-match" id="memory-match" hidden>
+                <p id="memory-similar-note"><strong>비슷한 도면을 검토한 기록이 있어요.</strong> 이전 지적은 참고일 뿐이고, 이번 도면에서 다시 확인한 것만 결과에 남아요.</p>
+                <p id="memory-lessons-note"><strong>여러 도면에서 반복된 지적 유형이 있어요.</strong> 놓치기 쉬운 점으로만 알려 주고, 이번 도면에서 직접 확인한 것만 결과에 남아요.</p>
+                <label class="privacy-note" for="memory-consent">
+                  <input id="memory-consent" type="checkbox">
+                  아래 이전 지적 요약·반복 유형을 Microsoft Copilot Studio의 ③ 요청에 함께 보내는 것에 동의합니다. 동의하지 않으면 보내지 않아요.
+                </label>
+                <pre class="privacy-note" id="memory-preview"></pre>
+              </div>
+              <p class="privacy-note" id="code-scope-note">코드 점검은 정해진 규칙만 봐서 세로 치수·조립 그림·KS 규격·공차 값이 맞는지는 보지 못해요. 이런 부분은 ‘피드백 받기’(③)로 이어서 확인하고, 마지막 판단은 원본 도면을 보며 직접 하세요.</p>
               <button class="start-button" id="feedback-start-button" type="button">피드백 받기</button>
               <input class="hidden-input" id="feedback-file-input" type="file" accept=".pdf,application/pdf" aria-label="저장된 분석과 함께 보낼 원본 PDF 선택">
               <button class="select-button" id="cancel-feedback" type="button" hidden>기다리기 중단</button>
@@ -748,6 +812,13 @@
               <section id="review-drawing" aria-labelledby="review-drawing-title" hidden>
                 <h3 id="review-drawing-title">도면 위 피드백 위치</h3>
                 <p class="subtext" id="review-drawing-status" role="status"></p>
+                <ul class="marker-legend" id="review-drawing-legend" hidden>
+                  <li><span class="legend-dot tone-red"></span><strong>빨강 !</strong> 서로 안 맞아요. 고쳐야 해요.</li>
+                  <li><span class="legend-dot tone-yellow"></span><strong>노랑 ?</strong> 코드가 확정을 못 했어요. 직접 봐 주세요.</li>
+                  <li><span class="legend-dot tone-blue"></span><strong>파랑 ?</strong> 질문이에요. 답해 주면 더 정확해져요.</li>
+                  <li><span class="legend-dot candidate"></span><strong>점선</strong> 정확한 자리 대신 후보 위치예요.</li>
+                  <li><strong>1′</strong> 같은 번호 뒤의 ′는 같은 지적의 다른 위치예요.</li>
+                </ul>
                 <div id="review-drawing-pages"></div>
               </section>
               <h3>확인할 점 <span id="review-agent-finding-count"></span></h3>

@@ -1,4 +1,5 @@
-import { buildDxfAgentMessage } from "./agent-input.js";
+import { buildDxfAgentMessage, buildPdfAgentInput, buildPdfAgentResponse, findScanPages, isCodeReadResponse } from "./agent-input.js";
+import { mergeCodeReview, ProblemSheetError, readProblemSheet, reviewCodeReadAnalysis } from "./code-review.js";
 import { readDxf } from "./dxf.js";
 import { readPdf } from "./pdf.js";
 import { AgentResultError, parseAgentResult } from "./agent-result.js";
@@ -7,11 +8,13 @@ import {
   analyzeDrawingWithStudio,
   getHostedStudioConfig,
   getHostedStudioToken,
+  problemSheetType,
   reviewDrawingWithStudio,
   StudioConnectionError,
 } from "./studio-connection.js";
 import { createAnalysisHistory, fileFingerprint } from "./analysis-history.js";
 import { buildReferenceExamples, REFERENCE_FILE_NAME } from "./reference-examples.js";
+import { combineMemoryText, createReviewMemory } from "./review-memory.js";
 
 const $ = (selector) => document.querySelector(selector);
 const agentResultView = createAgentResultView();
@@ -19,11 +22,24 @@ const historyName = new URLSearchParams(window.location.search).get("history");
 const analysisHistory = createAnalysisHistory({
   key: historyName === "test" ? "blueprint-analysis-history-test" : "blueprint-analysis-history-v1",
 });
+const reviewMemory = createReviewMemory({
+  key: historyName === "test" ? "blueprint-review-memory-test" : "blueprint-review-memory-v1",
+});
+let similarMemory = null;
+let memoryLessons = [];
 const savedTime = (value) => new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 const fileInput = $("#file-input");
 const feedbackFileInput = $("#feedback-file-input");
+const problemSheetInput = $("#problem-sheet-input");
+let problemSheetFile = null;
+// 문제지 PDF의 '조립 정보' 표를 코드로 읽은 결과예요. 그림·스캔 문제지는 null(③에 보낼 때만 사용).
+let problemSheetInfo = null;
+let problemSheetToken = 0;
+// 화면에 코드 점검 결과가 떠 있을 때만 문제지를 고르면 대조 결과로 다시 그려요.
+let codeReviewShown = false;
 const startButton = $("#start-button");
 const agentStartButton = $("#agent-start-button");
+const codeReadButton = $("#code-read-button");
 const reviewerConsent = $("#reviewer-consent");
 const cancelAgentButton = $("#cancel-agent");
 const dropArea = $("#drop-area");
@@ -97,6 +113,7 @@ function updateAgentStartButton() {
     || !chosenFile.name.toLowerCase().endsWith(".pdf")
     || !reviewerConsent.checked
     || hostedSetupError;
+  codeReadButton.disabled = busy || !chosenFile || !chosenFile.name.toLowerCase().endsWith(".pdf");
 }
 
 function finishHostedChallenge(error, token = null) {
@@ -200,14 +217,18 @@ function setBusy(value, kind = null) {
   fileInput.disabled = value;
   $("#remove-file")?.toggleAttribute("disabled", value);
   startButton.textContent = value && kind === "local" ? "읽는 중…" : "이 브라우저에서만 읽기";
-  agentStartButton.textContent = value && kind === "agent" ? "② 분석 중…" : "도면 분석하기";
+  agentStartButton.textContent = value && kind === "agent" ? "② 분석 중…" : "② 분석하기";
+  codeReadButton.textContent = value ? (kind === "agent" ? "② 분석 중…" : "분석 중…") : "도면 분석하기";
   cancelAgentButton.hidden = !value || kind !== "agent";
   cancelAgentButton.disabled = false;
   $("#feedback-start-button").disabled = value || !activeAnalysisEntry;
   feedbackFileInput.disabled = value;
+  problemSheetInput.disabled = value;
+  $("#problem-sheet-remove").disabled = value;
   $("#cancel-feedback").hidden = !value || kind !== "review";
   $("#cancel-feedback").disabled = false;
   for (const button of document.querySelectorAll("#history-panel button, #history-panel input, #open-saved-match")) button.disabled = value;
+  $("#clear-memory").disabled = value;
   if (!value) updateReferenceButton();
 }
 
@@ -216,6 +237,9 @@ function updateFeedbackAction() {
     && Boolean(activeAnalysisEntry)
     && Boolean(activeAnalysisFile || activeAnalysisEntry.fingerprint);
   $("#feedback-actions").hidden = !available;
+  $("#code-scope-note").hidden = !available || !isCodeReadResponse(activeAnalysisEntry.response);
+  if (available) updateMemoryMatch();
+  else $("#memory-match").hidden = true;
   $("#feedback-start-button").disabled = busy || !available;
 }
 
@@ -275,9 +299,25 @@ function downloadReferences() {
     `참고 예제 ${count}개를 ${REFERENCE_FILE_NAME} 파일로 내려받았어요. 열어서 내용을 확인한 뒤 Studio에 올려 주세요.`;
 }
 
+function updateMemoryMatch() {
+  similarMemory = activeAnalysisEntry?.kind === "review"
+    ? null
+    : reviewMemory.findSimilar(activeAnalysisEntry?.response ?? "", activeAnalysisEntry?.fingerprint ?? null);
+  memoryLessons = activeAnalysisEntry?.kind === "review" ? [] : reviewMemory.lessons();
+  $("#memory-consent").checked = false;
+  $("#memory-match").hidden = !similarMemory && !memoryLessons.length;
+  $("#memory-similar-note").hidden = !similarMemory;
+  $("#memory-lessons-note").hidden = !memoryLessons.length;
+  $("#memory-preview").textContent = combineMemoryText(similarMemory?.entry, memoryLessons);
+}
+
 function renderHistory() {
   const entries = analysisHistory.list();
+  const memoryCount = reviewMemory.list().length;
   $("#history-panel").hidden = !entries.length;
+  $("#memory-panel").hidden = !memoryCount;
+  $("#clear-memory").textContent = `검토 기억 모두 삭제 (${memoryCount}개)`;
+  $("#clear-memory").disabled = busy || !memoryCount;
   $("#reference-status").textContent = "";
   updateReferenceButton();
   $("#history-list").replaceChildren(...entries.map((entry) => {
@@ -285,7 +325,8 @@ function renderHistory() {
     item.className = "file-row";
     const type = document.createElement("span");
     type.className = "file-type";
-    type.textContent = entry.kind === "review" ? "③" : entry.reviewResponse ? "②+③" : "②";
+    const analysisLabel = isCodeReadResponse(entry.response) ? "코드" : "②";
+    type.textContent = entry.kind === "review" ? "③" : entry.reviewResponse ? `${analysisLabel}+③` : analysisLabel;
     const info = document.createElement("div");
     info.className = "file-info";
     const name = document.createElement("div");
@@ -361,6 +402,7 @@ function openSaved(id, resultType = "analysis") {
   }
   activeAnalysisEntry = null;
   activeAnalysisFile = null;
+  codeReviewShown = false;
   updateFeedbackAction();
   const response = resultType === "review"
     ? entry.kind === "review" ? entry.response : entry.reviewResponse
@@ -837,6 +879,79 @@ agentStartButton.addEventListener("click", async () => {
   }
 });
 
+// 벡터 PDF를 코드로 읽어 ② 형식 자료를 만들고, ②를 거치지 않고 ③ 피드백을 받을 수 있게 해요.
+codeReadButton.addEventListener("click", async () => {
+  if (!chosenFile || !chosenFile.name.toLowerCase().endsWith(".pdf") || busy) return;
+  const file = chosenFile;
+  let scanFallback = false;
+  setBusy(true, "code");
+  $("#read-error").textContent = "";
+  $("#agent-result-error").textContent = "";
+  $("#feedback-actions").hidden = true;
+  startProgress(false);
+  reportProgress("PDF를 코드로 읽는 중…");
+  const started = performance.now();
+  try {
+    const buffer = await file.arrayBuffer();
+    if (!buffer.byteLength) throw new Error("빈 파일이에요. 내용이 있는 PDF를 선택해 주세요.");
+    const pdfResult = await readPdf(buffer, reportProgress, { scanImages: false });
+    const scanPages = findScanPages(pdfResult);
+    if (scanPages.length) {
+      stopProgress(false);
+      if (reviewerConsent.checked && !hostedSetupError) {
+        scanFallback = true;
+        return;
+      }
+      $("#read-error").textContent =
+        `${scanPages.join(", ")}페이지가 스캔(그림) 페이지라 코드로 정확히 읽을 수 없어요. 위의 전송 동의를 체크한 뒤 ‘도면 분석하기’를 다시 눌러 주세요.`;
+      return;
+    }
+    const response = buildPdfAgentResponse(pdfResult, file.name);
+    let fingerprint = file === chosenFile ? chosenFingerprint : null;
+    try {
+      fingerprint ??= await fileFingerprint(file);
+    } catch (error) {
+      console.error("도면 구분값 계산 실패:", error instanceof Error ? error.name : typeof error);
+    }
+    const saved = analysisHistory.save({ fileName: file.name, fingerprint, response });
+    activeAnalysisEntry = saved ?? { id: null, fileName: file.name, fingerprint: fingerprint ?? null, response, kind: "analysis" };
+    activeAnalysisFile = file;
+    if (saved) {
+      renderHistory();
+      await checkSavedMatch(file);
+    }
+    stopProgress(true);
+    showCodeReview(response, file, `${((performance.now() - started) / 1000).toFixed(1)}초, `);
+    showReview(false, file.name);
+    updateFeedbackAction();
+    if (!saved) $("#agent-result-progress").textContent += " 브라우저에 저장하지는 못했어요.";
+  } catch (error) {
+    stopProgress(false);
+    console.error("PDF 코드 읽기 실패:", error instanceof Error ? error.name : typeof error);
+    $("#read-error").textContent = `코드로 읽지 못했어요. ${error.message}`;
+  } finally {
+    $("#read-progress").textContent = "";
+    setBusy(false);
+    if (scanFallback) agentStartButton.click();
+  }
+});
+
+function showCodeReview(response, file, timing = "") {
+  const codeReview = reviewCodeReadAnalysis(response, { problemSheet: problemSheetInfo });
+  agentResultView.reset();
+  agentResultView.showResponse(JSON.stringify(codeReview), response, file);
+  codeReviewShown = true;
+  const count = (kind) => codeReview.findings.filter((finding) => finding.classification === kind).length;
+  $("#agent-result-progress").textContent =
+    `PDF를 코드로 읽고 점검했어요(${timing}틀림 ${count("틀림")}건·확인 필요 ${count("확인 필요")}건·질문 ${count("질문")}개`
+    + `${problemSheetInfo ? `, 문제지 ‘${problemSheetFile?.name ?? ""}’와 대조` : ""}). 더 자세한 검토는 ‘피드백 받기’(선택).`;
+}
+
+function refreshCodeReview() {
+  if (!codeReviewShown || busy || !activeAnalysisEntry || !isCodeReadResponse(activeAnalysisEntry.response)) return;
+  showCodeReview(activeAnalysisEntry.response, activeAnalysisFile);
+}
+
 async function requestFeedback(file = activeAnalysisFile) {
   if (!activeAnalysisEntry || busy) return;
   if (!file) {
@@ -880,8 +995,11 @@ async function requestFeedback(file = activeAnalysisFile) {
       const challenge = await requestHostedChallenge(agentController.signal);
       hostedTokens = await getHostedStudioToken("reviewer", challenge, { signal: agentController.signal });
     }
-    const reviewResponse = await reviewDrawingWithStudio(file, {
+    let reviewResponse = await reviewDrawingWithStudio(file, {
       analysisResult: activeAnalysisEntry.response,
+      analysisOrigin: isCodeReadResponse(activeAnalysisEntry.response) ? "code" : "agent",
+      problemSheet: problemSheetFile,
+      memoryText: (similarMemory || memoryLessons.length) && $("#memory-consent").checked ? combineMemoryText(similarMemory?.entry, memoryLessons) : "",
       hostedAccess: hostedTokens,
       signal: agentController.signal,
       onProgress: (message) => {
@@ -890,7 +1008,27 @@ async function requestFeedback(file = activeAnalysisFile) {
       },
     });
     stopProgress(true);
-    agentResultView.showResponse(reviewResponse, activeAnalysisEntry.response, file);
+    if (isCodeReadResponse(activeAnalysisEntry.response)) {
+      try {
+        const parsed = parseAgentResult(reviewResponse);
+        const merged = mergeCodeReview(
+          reviewCodeReadAnalysis(activeAnalysisEntry.response, { problemSheet: problemSheetInfo }), parsed.data);
+        if (merged !== parsed.data) reviewResponse = JSON.stringify(merged);
+      } catch (error) {
+        if (!(error instanceof AgentResultError)) throw error;
+        // ③ 응답 형식이 맞지 않으면 합치지 않고, 아래 화면 표시에서 형식 오류를 알려요.
+      }
+    }
+    const memoryEntry = reviewMemory.save({
+      fingerprint: activeAnalysisEntry.fingerprint,
+      analysisResponse: activeAnalysisEntry.response,
+      reviewResponse,
+    });
+    agentResultView.showResponse(reviewResponse, activeAnalysisEntry.response, file, {
+      onVerdict: memoryEntry ? (findingId, verdict) => reviewMemory.setVerdict(memoryEntry.id, findingId, verdict) : null,
+    });
+    codeReviewShown = false;
+    renderHistory();
     const reviewSaved = activeAnalysisEntry.id
       && analysisHistory.saveReview(activeAnalysisEntry.id, reviewResponse);
     if (reviewSaved) {
@@ -899,6 +1037,7 @@ async function requestFeedback(file = activeAnalysisFile) {
       if (file === chosenFile) await checkSavedMatch(file);
     }
     $("#feedback-actions").hidden = true;
+    $("#memory-match").hidden = true;
     $("#agent-result-error").textContent = "";
     $("#agent-result-progress").textContent = reviewSaved
       ? "③ 피드백을 받았고 결과를 이 브라우저에 저장했어요. 원본 도면과 직접 비교해 주세요."
@@ -925,6 +1064,54 @@ async function requestFeedback(file = activeAnalysisFile) {
 }
 
 $("#feedback-start-button").addEventListener("click", () => requestFeedback());
+// 문제지 PDF에 '조립 정보' 표가 있으면 코드로 읽어 도면과 대조해요. 실패해도 ③에 보낼 문제지로는 그대로 둬요.
+async function readProblemSheetFile(file) {
+  if (!file.name.toLowerCase().endsWith(".pdf")) {
+    return { info: null, note: "그림 문제지는 코드로 대조하지 않고, ‘피드백 받기’ 때 ③에 함께 보내요." };
+  }
+  const result = await readPdf(await file.arrayBuffer(), () => {}, { scanImages: false });
+  if (findScanPages(result).length) {
+    return { info: null, note: "스캔 문제지는 글자를 코드로 읽을 수 없어 대조하지 않고, ‘피드백 받기’ 때 ③에 함께 보내요." };
+  }
+  const info = readProblemSheet(buildPdfAgentInput(result, file.name));
+  return { info, note: `문제지 ‘조립 정보’ 표를 읽었어요(부품 ${info.parts.length}줄). 코드 점검에 대조 결과를 넣었어요.` };
+}
+
+async function setProblemSheet(file) {
+  const token = ++problemSheetToken;
+  problemSheetFile = file;
+  problemSheetInfo = null;
+  $("#problem-sheet-name").textContent = file ? file.name : "선택 안 함";
+  $("#problem-sheet-remove").hidden = !file;
+  $("#problem-sheet-status").textContent = file ? "문제지를 읽는 중이에요…" : "";
+  if (file) {
+    let read;
+    try {
+      read = await readProblemSheetFile(file);
+    } catch (error) {
+      if (!(error instanceof ProblemSheetError)) {
+        console.error("문제지 읽기 실패:", error instanceof Error ? error.name : typeof error);
+      }
+      read = { info: null, note: error instanceof ProblemSheetError ? error.message : "문제지를 코드로 읽지 못했어요. ③에 보낼 때만 함께 보내요." };
+    }
+    if (token !== problemSheetToken) return;
+    problemSheetInfo = read.info;
+    $("#problem-sheet-status").textContent = read.note;
+  }
+  refreshCodeReview();
+}
+problemSheetInput.addEventListener("change", () => {
+  const file = problemSheetInput.files?.[0] ?? null;
+  problemSheetInput.value = "";
+  if (!file) return;
+  if (!problemSheetType(file)) {
+    $("#agent-result-error").textContent = "문제지는 PDF·PNG·JPG 파일만 보낼 수 있어요.";
+    return;
+  }
+  $("#agent-result-error").textContent = "";
+  void setProblemSheet(file);
+});
+$("#problem-sheet-remove").addEventListener("click", () => void setProblemSheet(null));
 feedbackFileInput.addEventListener("change", async () => {
   const file = feedbackFileInput.files?.[0] ?? null;
   feedbackFileInput.value = "";
@@ -946,6 +1133,14 @@ $("#open-saved-match").addEventListener("click", (event) => (
   openSaved(event.currentTarget.dataset.id, event.currentTarget.dataset.resultType)
 ));
 $("#download-references").addEventListener("click", downloadReferences);
+$("#clear-memory").addEventListener("click", () => {
+  if (busy || !window.confirm("저장된 검토 기억을 모두 삭제할까요? 분석·검토 결과는 지워지지 않고, 되돌릴 수 없어요.")) return;
+  reviewMemory.clear();
+  similarMemory = null;
+  memoryLessons = [];
+  $("#memory-match").hidden = true;
+  renderHistory();
+});
 $("#clear-history").addEventListener("click", () => {
   if (busy || !window.confirm("저장된 분석·검토 결과를 모두 삭제할까요? 되돌릴 수 없어요.")) return;
   analysisHistory.clear();

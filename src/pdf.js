@@ -235,6 +235,22 @@ function hasSelectableTextInBox(texts, box, scale) {
   });
 }
 
+// Safari에서도 읽을 수 있도록 스트림의 비동기 반복(getTextContent 내부) 대신 표준 reader를 사용합니다.
+async function readTextItems(page) {
+  const items = [];
+  const reader = page.streamTextContent().getReader();
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      items.push(...value.items);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return items;
+}
+
 function openDocument(getDocument, buffer) {
   const assetUrl = (directory) => new URL(`../vendor/pdfjs/${directory}/`, import.meta.url).href;
   return getDocument({
@@ -269,9 +285,8 @@ export async function openPdfForFeedback(buffer) {
       if (!valid(number)) return null;
       const page = await document.getPage(number);
       const viewport = page.getViewport({ scale: 1 });
-      const content = await page.getTextContent();
       const texts = [];
-      for (const item of content.items) {
+      for (const item of await readTextItems(page)) {
         if (!("str" in item) || !item.str.trim()) continue;
         const matrix = multiply(viewport.transform, item.transform);
         const height = Math.hypot(matrix[2], matrix[3]);
@@ -307,7 +322,25 @@ export async function openPdfForFeedback(buffer) {
   };
 }
 
-export async function readPdf(buffer, onProgress = () => {}) {
+// 글자 조각이 페이지에서 차지하는 사각형 [왼쪽, 위, 오른쪽, 아래]를 계산합니다.
+function textBox(item, matrix, viewport) {
+  const height = Math.hypot(matrix[2], matrix[3]);
+  const scaleX = Math.hypot(matrix[0], matrix[1]) || 1;
+  const along = [matrix[0] / scaleX, matrix[1] / scaleX];
+  const up = height ? [matrix[2] / height, matrix[3] / height] : [0, -1];
+  const width = item.width * Math.hypot(viewport.transform[0], viewport.transform[1]);
+  const corners = [[0, 0], [width, 0], [0, height], [width, height]].map(([a, b]) => [
+    matrix[4] + along[0] * a + up[0] * b,
+    matrix[5] + along[1] * a + up[1] * b,
+  ]);
+  const xs = corners.map(([x]) => x);
+  const ys = corners.map(([, y]) => y);
+  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+}
+
+// scanImages가 false이면 이미지가 있는 페이지에서 글자 인식(OCR)과 이미지 선 찾기를 하지 않고
+// imagePages에 페이지 번호와 그 페이지의 벡터 선·원 개수만 기록합니다(코드로 빠르게 읽기용).
+export async function readPdf(buffer, onProgress = () => {}, { scanImages = true } = {}) {
   const { getDocument, OPS } = await loadLibrary();
   const task = openDocument(getDocument, buffer);
   let ocrWorker = null;
@@ -315,6 +348,7 @@ export async function readPdf(buffer, onProgress = () => {}) {
     const document = await task.promise;
     const elements = [];
     const pages = [];
+    const imagePages = [];
     const warnings = new Set();
     for (let number = 1; number <= document.numPages; number += 1) {
       onProgress(`${number}/${document.numPages}페이지 읽는 중…`);
@@ -337,7 +371,7 @@ export async function readPdf(buffer, onProgress = () => {}) {
             texts.push({
               kind: "text", text: item.str, position: { x: matrix[4], y: matrix[5] },
               height: Math.hypot(matrix[2], matrix[3]), rotation: Math.atan2(matrix[1], matrix[0]) * 180 / Math.PI,
-              page: number, uncertain,
+              box: textBox(item, matrix, viewport), page: number, uncertain,
             });
             if (uncertain) warnings.add(`${number}페이지 확인 필요: 일부 글자가 깨져 있어 원본과 비교해야 해요.`);
           }
@@ -346,7 +380,9 @@ export async function readPdf(buffer, onProgress = () => {}) {
         reader.releaseLock();
       }
       let scanElements = [];
-      if (pathResult.hasImage) {
+      if (pathResult.hasImage && !scanImages) {
+        imagePages.push({ number, vectorShapes: paths.length });
+      } else if (pathResult.hasImage) {
         if (!ocrWorker) {
           onProgress("한국어·영어 스캔 글자 읽기 준비 중…");
           ocrWorker = await createOcrWorker(onProgress);
@@ -393,7 +429,7 @@ export async function readPdf(buffer, onProgress = () => {}) {
         canvas.width = 0;
         canvas.height = 0;
       }
-      if (!paths.length && !texts.length && !scanElements.length) {
+      if (!paths.length && !texts.length && !scanElements.length && !(pathResult.hasImage && !scanImages)) {
         warnings.add(`${number}페이지 확인 필요: 읽을 수 있는 선·원·글자가 없어요.`);
       }
       for (const path of paths) elements.push(path);
@@ -403,11 +439,11 @@ export async function readPdf(buffer, onProgress = () => {}) {
       page.cleanup();
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
-    if (!elements.length) throw new Error(`PDF에서 읽을 수 있는 선·원·글자가 없어요. ${[...warnings].join(" ")}`);
+    if (!elements.length && !imagePages.length) throw new Error(`PDF에서 읽을 수 있는 선·원·글자가 없어요. ${[...warnings].join(" ")}`);
     if (elements.some((element) => element.kind === "circle" && element.source !== "image")) {
       warnings.add("확인 필요: PDF의 원은 곡선을 바탕으로 추정했어요. 중심과 반지름을 원본과 비교해 주세요.");
     }
-    return { format: "PDF", unit: "포인트(1/72인치)", elements, pages, warnings: [...warnings] };
+    return { format: "PDF", unit: "포인트(1/72인치)", elements, pages, imagePages, warnings: [...warnings] };
   } catch (error) {
     if (error.name === "PasswordException") throw new Error("암호가 걸린 PDF는 아직 읽지 못해요. 암호를 해제한 사본을 선택해 주세요.");
     if (error.name === "InvalidPDFException") throw new Error("올바른 PDF가 아니거나 파일이 손상되었어요. 원본 프로그램에서 다시 저장해 주세요.");

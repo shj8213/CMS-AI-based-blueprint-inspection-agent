@@ -56,7 +56,8 @@ function checkConfirmation(record, label) {
 
 function validateReviewResult(data) {
   const statuses = ["검토 완료", "부분 완료", "입력 필요"];
-  const classifications = ["틀림", "확인 필요"];
+  // '질문'은 홈페이지 코드 점검만 써요. 도면만으로 알 수 없는 것을 사람에게 물어봐요.
+  const classifications = ["틀림", "확인 필요", "질문"];
   const issueTypes = ["누락", "읽기 불확실", "연결 불확실", "표기 불일치"];
   const confidences = ["높음", "중간", "낮음"];
   if (!statuses.includes(data.status)) {
@@ -100,6 +101,13 @@ function validateReviewResult(data) {
     }
     if (finding.intent_hypothesis != null && typeof finding.intent_hypothesis !== "string") {
       throw new AgentResultError(`${label}의 intent_hypothesis는 글자여야 해요.`);
+    }
+    if (finding.classification === "질문" || finding.question != null) {
+      const question = finding.question;
+      if (!isRecord(question) || typeof question.text !== "string" || !Array.isArray(question.choices)
+        || !question.choices.length || question.choices.some((choice) => typeof choice !== "string")) {
+        throw new AgentResultError(`${label}의 질문(question)에는 text 글자와 choices 글자 목록이 필요해요.`);
+      }
     }
     checkList(finding, "analysis_item_ids", `${label}의 ② 항목 ID`);
     if (!finding.analysis_item_ids || finding.analysis_item_ids.some((id) => typeof id !== "string")) {
@@ -208,6 +216,30 @@ function objectEnd(text, start) {
     }
   }
   return -1;
+}
+
+// 팀장 응답: 요약 → "② 분석 결과" JSON 블록 → "③ 검토 결과" JSON 블록. 못 한 단계는 블록 없이 "없음 (이유)".
+export function splitLeadResponse(input) {
+  const text = String(input ?? "").trim().replace(/^\uFEFF/, "");
+  if (!text) throw new AgentResultError("팀장 응답이 비어 있어요.");
+  const first = text.search(/^[ \t]*②[ \t]*분석 결과/m);
+  const second = text.search(/^[ \t]*③[ \t]*검토 결과/m);
+  if (first < 0 || second < 0 || second < first) {
+    throw new AgentResultError("팀장 응답에서 '② 분석 결과'와 '③ 검토 결과' 구간을 찾지 못했어요.");
+  }
+  const summary = text.slice(0, first).trim();
+  const section = (body, label) => {
+    const fences = [...body.matchAll(/^[ \t]*```[ \t]*json[ \t]*\r?\n[\s\S]*?^[ \t]*```[ \t]*\r?$/gim)];
+    if (fences.length > 1) throw new AgentResultError(`${label} 구간에 JSON 코드 블록이 여러 개예요.`);
+    if (!fences.length) return { data: null, note: body.replace(/^[^\n]*\n?/, "").trim() };
+    return { data: parseAgentResult(fences[0][0]).data, note: "" };
+  };
+  const analysis = section(text.slice(first, second), "②");
+  const review = section(text.slice(second), "③");
+  if (analysis.data?.schema_version === "2.0") throw new AgentResultError("② 구간에 ③ 검토 결과 형식이 들어 있어요.");
+  if (review.data && review.data.schema_version !== "2.0") throw new AgentResultError("③ 구간은 schema_version 2.0이어야 해요.");
+  const status = (summary.match(/상태[ \t]*[:：][ \t]*(완료|부분 완료|실패|입력 필요)/) ?? [])[1] ?? "";
+  return { summary, status, analysis: analysis.data, review: review.data, analysisNote: analysis.note, reviewNote: review.note };
 }
 
 export function parseAgentResult(input) {
