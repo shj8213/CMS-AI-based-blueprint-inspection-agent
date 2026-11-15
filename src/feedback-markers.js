@@ -3,9 +3,9 @@
 // 어느 쪽도 확실하지 않으면 동그라미를 그리지 않고 "위치 확인 필요"로 남깁니다.
 
 const MARKER_STYLES = {
-  "틀림": { color: "tone-red", symbol: "!", label: "틀림" },
-  "확인 필요": { color: "tone-yellow", symbol: "?", label: "확인 필요" },
-  "질문": { color: "tone-blue", symbol: "?", label: "질문" },
+  "틀림": { color: "tone-red", label: "틀림" },
+  "확인 필요": { color: "tone-yellow", label: "확인 필요" },
+  "질문": { color: "tone-blue", label: "질문" },
 };
 const MIN_RADIUS = 0.015;
 const POINT_RADIUS = 0.02;

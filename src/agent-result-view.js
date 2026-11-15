@@ -520,7 +520,7 @@ async function renderFeedbackDrawing(review, analysis, coordinateMarkers, file, 
         const spot = (spotCount.get(marker.number) ?? 0) + 1;
         spotCount.set(marker.number, spot);
         // 같은 지적의 두 번째 곳부터는 기호 없이 1′, 1″처럼 짧게 적어 번호가 길어지지 않게 해요.
-        label.textContent = spot === 1 ? `${marker.number}${marker.symbol}` : `${marker.number}${"′".repeat(Math.min(spot - 1, 2))}`;
+        label.textContent = spot === 1 ? `${marker.number}` : `${marker.number}${"′".repeat(Math.min(spot - 1, 2))}`;
         if (placement.labelRow) label.style.top = `${placement.labelRow * 22 - 6}px`;
         button.dataset.labelRow = String(placement.labelRow ?? 0);
         button.append(label);
@@ -635,7 +635,7 @@ function renderReviewResult(data, responseSummary, message, analysisText) {
       const heading = document.createElement("h4");
       const badge = document.createElement("span");
       badge.className = `finding-badge ${marker.color}`;
-      badge.textContent = `${marker.number}${marker.symbol}`;
+      badge.textContent = `${marker.number}`;
       badge.setAttribute("aria-label", `${marker.number}번 ${marker.label}`);
       heading.append(badge, document.createTextNode(` ${finding.classification} · ${finding.issue_type} · ${finding.id}`));
       card.append(heading);
