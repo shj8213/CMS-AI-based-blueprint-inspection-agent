@@ -2118,6 +2118,20 @@ test("화면: 코드 점검으로 틀린 숫자를 바로 빨간 동그라미로
     assert(viewport.scrollWidth > viewport.clientWidth, "확대하면 스크롤로 움직일 수 있어야 해요.");
     reset.click();
     assert(close(frameBox().width, before.frame.width, 1) && app.querySelector(".zoom-level").textContent === "100%");
+    const wheel = (options) => viewport.dispatchEvent(new frame.contentWindow.WheelEvent("wheel", { bubbles: true, cancelable: true, ...options }));
+    const target = markerBox();
+    const pointX = target.left + target.width / 2;
+    const pointY = target.top + target.height / 2;
+    assert(wheel({ deltaY: -100, clientX: pointX, clientY: pointY }) && app.querySelector(".zoom-level").textContent === "100%",
+      "Ctrl 없이 휠을 굴리면 페이지 스크롤이어야 해요.");
+    const ratioBefore = (pointX - frameBox().left) / frameBox().width;
+    for (let count = 0; count < 3; count += 1) {
+      assert(!wheel({ deltaY: -100, ctrlKey: true, clientX: pointX, clientY: pointY }), "Ctrl+휠은 브라우저 확대 대신 도면 확대여야 해요.");
+    }
+    assert(frameBox().width > before.frame.width * 1.5, `Ctrl+휠로 커져야 해요: ${app.querySelector(".zoom-level").textContent}`);
+    assert(close((pointX - frameBox().left) / frameBox().width, ratioBefore, 0.01), "마우스가 있던 도면 위치를 기준으로 확대해야 해요.");
+    for (let count = 0; count < 20; count += 1) wheel({ deltaY: 100, ctrlKey: true, clientX: pointX, clientY: pointY });
+    assert(app.querySelector(".zoom-level").textContent === "100%" && zoomOut.disabled, "100%보다 작아지면 안 돼요.");
   } finally {
     frame.contentWindow.fetch = originalFetch;
     if (!app.querySelector("#review-screen").hidden) app.querySelector("#back-button").click();

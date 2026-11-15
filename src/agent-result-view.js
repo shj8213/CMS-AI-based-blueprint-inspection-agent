@@ -234,26 +234,49 @@ function createZoomControls(viewport, frame, pageNumber) {
   const zoomOut = make("−", "축소");
   const zoomIn = make("+", "확대");
   const reset = make("원래 크기", "원래 크기로");
-  let index = 0;
-  const apply = (next) => {
-    const centerX = (viewport.scrollLeft + viewport.clientWidth / 2) / (viewport.scrollWidth || 1);
-    const centerY = (viewport.scrollTop + viewport.clientHeight / 2) / (viewport.scrollHeight || 1);
-    index = Math.max(0, Math.min(ZOOM_LEVELS.length - 1, next));
-    const zoom = ZOOM_LEVELS[index];
+  const minZoom = ZOOM_LEVELS[0];
+  const maxZoom = ZOOM_LEVELS.at(-1);
+  let zoom = minZoom;
+  // anchor: 확대 기준이 되는 보기 영역 안의 위치(px). 없으면 가운데를 기준으로 해요.
+  const apply = (next, anchor = null) => {
+    const previous = zoom;
+    zoom = Math.max(minZoom, Math.min(maxZoom, next));
+    const x = anchor?.x ?? viewport.clientWidth / 2;
+    const y = anchor?.y ?? viewport.clientHeight / 2;
+    const pointX = (viewport.scrollLeft + x) / previous;
+    const pointY = (viewport.scrollTop + y) / previous;
     frame.style.width = `${zoom * 100}%`;
-    viewport.classList.toggle("zoomed", zoom > 1);
-    viewport.scrollLeft = centerX * viewport.scrollWidth - viewport.clientWidth / 2;
-    viewport.scrollTop = centerY * viewport.scrollHeight - viewport.clientHeight / 2;
+    viewport.classList.toggle("zoomed", zoom > minZoom);
+    viewport.scrollLeft = pointX * zoom - x;
+    viewport.scrollTop = pointY * zoom - y;
     level.textContent = `${Math.round(zoom * 100)}%`;
-    zoomOut.disabled = index === 0;
-    reset.disabled = index === 0;
-    zoomIn.disabled = index === ZOOM_LEVELS.length - 1;
+    zoomOut.disabled = zoom <= minZoom;
+    reset.disabled = zoom <= minZoom;
+    zoomIn.disabled = zoom >= maxZoom;
   };
-  zoomOut.addEventListener("click", () => apply(index - 1));
-  zoomIn.addEventListener("click", () => apply(index + 1));
-  reset.addEventListener("click", () => apply(0));
-  controls.append(zoomOut, level, zoomIn, reset);
-  apply(0);
+  const step = (direction) => {
+    const next = direction > 0
+      ? ZOOM_LEVELS.find((value) => value > zoom + 0.01) ?? maxZoom
+      : [...ZOOM_LEVELS].reverse().find((value) => value < zoom - 0.01) ?? minZoom;
+    apply(next);
+  };
+  zoomOut.addEventListener("click", () => step(-1));
+  zoomIn.addEventListener("click", () => step(1));
+  reset.addEventListener("click", () => apply(minZoom));
+  // 일반 휠은 페이지 스크롤로 두고, Ctrl/⌘+휠과 트랙패드 두 손가락 벌리기(브라우저가 ctrlKey로 보냄)로 확대해요.
+  viewport.addEventListener("wheel", (event) => {
+    if (!event.ctrlKey && !event.metaKey) return;
+    event.preventDefault();
+    const box = viewport.getBoundingClientRect();
+    const delta = event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY;
+    apply(zoom * Math.exp(-Math.max(-100, Math.min(100, delta)) * 0.004),
+      { x: event.clientX - box.left, y: event.clientY - box.top });
+  }, { passive: false });
+  const hint = document.createElement("span");
+  hint.className = "zoom-hint";
+  hint.textContent = "Ctrl(⌘)+휠로도 확대";
+  controls.append(zoomOut, level, zoomIn, reset, hint);
+  apply(minZoom);
   return controls;
 }
 
