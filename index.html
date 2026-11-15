@@ -350,6 +350,7 @@
       .history-list .file-row .select-button { margin-left: auto; flex: 0 0 auto; }
       .history-list .remove-button { margin-left: 0; }
       .history-actions { margin-top: 10px; text-align: right; }
+      #memory-preview { white-space: pre-wrap; margin: 6px 0 0; }
       .verify-label { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; font-size: 14px; white-space: nowrap; }
       .reference-box { margin-top: 12px; padding: 12px; border: 1px solid #d8dee8; border-radius: 8px; }
       .reference-box p { margin: 0 0 8px; font-size: 15px; }
@@ -660,6 +661,13 @@
               <button class="select-button" id="clear-history" type="button">저장된 결과 모두 삭제</button>
             </div>
           </section>
+          <section class="card upload-panel agent-entry" id="memory-panel" aria-labelledby="memory-title" hidden>
+            <h2 id="memory-title">검토 기억</h2>
+            <p class="privacy-note" id="memory-note">③ 검토가 끝나면 도면 종류·표기 모양·지적 요약만 이 브라우저에 저장해요(파일 이름·좌표는 제외, 표기 모양의 숫자는 가림). 지적 요약은 ③이 쓴 문장 그대로라 치수나 이름이 들어 있을 수 있어요. 이 브라우저를 쓰는 사람은 볼 수 있고, 동의해야만 다음 ③ 요청에 함께 보내요. 최근 20개까지 보관해요.</p>
+            <div class="history-actions">
+              <button class="select-button" id="clear-memory" type="button">검토 기억 모두 삭제 (0개)</button>
+            </div>
+          </section>
         </section>
 
         <section class="screen" id="review-screen" aria-labelledby="result-title" hidden>
@@ -716,6 +724,14 @@
                 <button class="select-button" id="problem-sheet-remove" type="button" hidden>빼기</button>
                 <p class="privacy-note" id="problem-sheet-status" role="status"></p>
                 <p class="privacy-note">문제지 PDF에 ‘조립 정보’ 표(예: <code>Ø20 k6 : 베어링 6204</code>, <code>키홈 폭 6</code>, <code>축 전체 길이 118</code>)가 있으면 홈페이지가 전송 없이 도면 글자와 대조해요. 문제지는 부품이 어디에 끼워지는지 알려 주는 참고 자료로만 써요. 저장되지 않고, 기능사 문제지는 저작권이 있으니 저장소·공개 사이트에 올리지 마세요.</p>
+              </div>
+              <div class="saved-match" id="memory-match" hidden>
+                <p><strong>비슷한 도면을 검토한 기록이 있어요.</strong> 이전 지적은 참고일 뿐이고, 이번 도면에서 다시 확인한 것만 결과에 남아요.</p>
+                <label class="privacy-note" for="memory-consent">
+                  <input id="memory-consent" type="checkbox">
+                  아래 이전 지적 요약을 Microsoft Copilot Studio의 ③ 요청에 함께 보내는 것에 동의합니다. 동의하지 않으면 보내지 않아요.
+                </label>
+                <pre class="privacy-note" id="memory-preview"></pre>
               </div>
               <p class="privacy-note" id="code-scope-note">코드 점검은 정해진 규칙만 봐서 세로 치수·조립 그림·KS 규격·공차 값이 맞는지는 보지 못해요. 이런 부분은 ‘피드백 받기’(③)로 이어서 확인하고, 마지막 판단은 원본 도면을 보며 직접 하세요.</p>
               <button class="start-button" id="feedback-start-button" type="button">피드백 받기</button>

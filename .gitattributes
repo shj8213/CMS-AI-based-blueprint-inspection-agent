@@ -1,1 +1,2 @@
 evaluation/**/agent-input/*.pdf binary
+*.json text eol=lf

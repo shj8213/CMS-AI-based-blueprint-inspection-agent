@@ -28,6 +28,7 @@ import { config as netlifyStudioTokenConfig, handleNetlifyStudioToken } from "..
 import { createAnalysisHistory, fileFingerprint } from "../src/analysis-history.js";
 import { buildReferenceExamples } from "../src/reference-examples.js";
 import { buildFeedbackMarkers, findTextMatches, mergeOverlappingMarkers, originDirection, pageMatches } from "../src/feedback-markers.js";
+import { buildMemoryText, createReviewMemory } from "../src/review-memory.js";
 
 const TEST_HISTORY_KEY = "blueprint-analysis-history-test";
 localStorage.removeItem(TEST_HISTORY_KEY);
@@ -1931,6 +1932,59 @@ agentTest("참고 예제: 확인 완료만 모으고 파일 이름·좌표는 �
 
   history.save({ fileName: "다시분석.pdf", fingerprint: "a", response });
   assert(history.find("a").verified === false, "다시 분석한 결과는 다시 확인해야 해요.");
+});
+
+agentTest("검토 기억: 비슷한 도면만 찾고 파일 이름·치수 값은 저장하지 않으며 삭제 가능", async () => {
+  const data = new Map();
+  const storage = {
+    getItem: (key) => data.get(key) ?? null,
+    setItem: (key, value) => data.set(key, value),
+    removeItem: (key) => data.delete(key),
+  };
+  const memory = createReviewMemory({ storage, key: "m" });
+  const analysis = `\`\`\`json\n${await agentFixture()}\n\`\`\``;
+  const review = `\`\`\`json\n${new TextDecoder().decode(await fixture("reviewer-result-v2.json"))}\n\`\`\``;
+  assert(memory.findSimilar(analysis) === null, "기록이 없으면 알림이 없어야 해요.");
+  const saved = memory.save({ fingerprint: "a", analysisResponse: analysis, reviewResponse: review });
+  assert(saved && saved.findings.length === 1 && saved.findings[0].issueType === "연결 불확실");
+  assert(!/가상-축-예제|Ø20h7/.test(JSON.stringify(saved)), "파일 이름과 치수 값은 저장하면 안 돼요.");
+
+  const changed = analysis.replace("Ø20h7", "Ø35h7").replace("+0.02/0", "+0.03/0");
+  assert(memory.findSimilar(changed, "b")?.entry.id === saved.id, "치수만 다른 같은 종류 도면은 비슷해야 해요.");
+  assert(memory.findSimilar(analysis, "a") === null, "같은 PDF는 기존 저장 결과 흐름에 맡겨요.");
+  const other = analysis.replaceAll('"type": "축 구간"', '"type": "판 구간"').replaceAll('"type": "홈"', '"type": "구멍"');
+  assert(memory.findSimilar(other, "c") === null, "도면 종류가 다르면 비슷하지 않아요.");
+  assert(memory.findSimilar("읽을 수 없음", "c") === null);
+
+  const text = buildMemoryText(saved);
+  assert(text.includes("이전 지적 요약") && text.includes("연결 불확실") && !text.includes("가상-축-예제"));
+  memory.save({ fingerprint: "a", analysisResponse: analysis, reviewResponse: review });
+  assert(memory.list().length === 1, "같은 도면을 다시 검토하면 기억을 교체해야 해요.");
+  memory.clear();
+  assert(memory.list().length === 0 && memory.findSimilar(changed, "b") === null);
+});
+
+agentTest("③ 요청: 동의한 이전 지적 요약만 참고 자료로 붙임", async () => {
+  const json = new TextDecoder().decode(await fixture("reviewer-result-v2.json"));
+  const sent = async (memoryText) => {
+    const mock = studioMock({
+      activityPages: [{
+        activities: [
+          { id: "r", type: "message", replyToId: "sent-1", text: `\`\`\`json\n${json}\n\`\`\`` },
+          { type: "event", name: "turn.complete", replyToId: "sent-1" },
+        ],
+      }],
+    });
+    await reviewDrawingWithStudio(testPdf(), {
+      analysisResult: "가상 ②", memoryText, fetchImpl: mock.fetchImpl, pollIntervalMs: 1, timeoutMs: 1000,
+    });
+    const upload = mock.requests.find(({ url }) => url.pathname.endsWith("/upload"));
+    return JSON.parse(await upload.options.body.get("activity").text()).text;
+  };
+  const withMemory = await sent("도면 종류: 축\n이전 지적 요약:\n1. 가상 지적");
+  assert(withMemory.includes("이전 검토 기억:") && withMemory.includes("1. 가상 지적"));
+  assert(withMemory.includes("이번 PDF에서 직접 다시 확인한 것만 findings에 남기고"));
+  assert(!(await sent(undefined)).includes("이전 검토 기억"), "동의하지 않으면 보내면 안 돼요.");
 });
 
 agentTest("화면: 확인 완료 체크와 참고 예제 파일 내려받기", async () => {
