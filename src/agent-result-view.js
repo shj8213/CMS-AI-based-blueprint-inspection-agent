@@ -246,7 +246,8 @@ function finishNotes(markers, drawn, sizeMismatch) {
     if (drawn.has(marker.number)) {
       const shown = marker.placements.filter((item) => item.drawn);
       const pagesText = [...new Set(shown.map((item) => item.page))].join(", ");
-      const how = shown.some((item) => item.source === "text") ? "글자 위치" : "좌표";
+      const how = shown.some((item) => item.band) ? "지적 글의 좌표(세로 띠, 세로 위치는 몰라요)"
+        : shown.some((item) => item.source === "text") ? "글자 위치" : "좌표";
       const extra = shown.some((item) => item.candidate)
         ? ` · 후보 ${shown.length}곳`
         : shown.length > 1 ? ` · ${shown.length}곳` : "";
@@ -305,7 +306,7 @@ function placeMarkerLabels(frame) {
   }
   const area = frame.getBoundingClientRect();
   // 좁은 화면에서는 최소 크기(22px) 때문에 가까운 동그라미끼리 겹칠 수 있어 최소 크기를 줄여요.
-  const circles = buttons.filter((button) => !button.classList.contains("label-only"));
+  const circles = buttons.filter((button) => !button.classList.contains("label-only") && !button.classList.contains("band"));
   for (const button of circles) button.style.minWidth = "";
   const centers = circles.map((button) => {
     const rect = button.getBoundingClientRect();
@@ -458,6 +459,8 @@ async function renderFeedbackDrawing(review, analysis, coordinateMarkers, file, 
     markers = mergeOverlappingMarkers(buildFeedbackMarkers(review, analysis, pdfPages));
     const pageNumbers = [...new Set(markers.flatMap((marker) => marker.placements.map((item) => item.page)))]
       .sort((a, b) => a - b);
+    // 표시할 위치가 하나도 없어도 원본 도면은 보이도록 첫 페이지를 그려요.
+    if (!pageNumbers.length) pageNumbers.push(wanted[0] ?? 1);
     if (pageNumbers.length) status.textContent = "도면 그림을 준비하는 중이에요…";
     for (const number of pageNumbers) {
       const page = await pdf.render(number, DRAWING_RENDER_WIDTH);
@@ -512,6 +515,12 @@ async function renderFeedbackDrawing(review, analysis, coordinateMarkers, file, 
         button.style.left = `${placement.x * 100}%`;
         button.style.top = `${placement.y * 100}%`;
         button.style.width = `${placement.radius * 200}%`;
+        if (placement.band) {
+          button.classList.add("band");
+          button.style.top = "0";
+          button.style.width = `${placement.bandWidth * 100}%`;
+          button.style.height = "100%";
+        }
         button.setAttribute("aria-pressed", "false");
         button.setAttribute("aria-label",
           `${marker.number}번 ${marker.label} 피드백 (${marker.findingId})${placement.candidate ? " 후보 위치" : ""} 카드 보기`);
