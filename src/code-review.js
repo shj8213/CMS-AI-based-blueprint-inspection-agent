@@ -132,16 +132,32 @@ function checkChainSums(texts, lines) {
       });
       continue;
     }
+    // 도면 축척으로 각 치수선의 그려진 길이를 재서, 적힌 숫자와 다른 치수가 딱 하나면 그 치수를 범인으로 가리켜요.
+    const scale = drawingScale(dimensions);
+    const drawnOf = (dimension) => Math.round(((dimension.x1 - dimension.x0) / scale) * 10) / 10;
+    const odd = scale
+      ? [total, ...chain].filter((dimension) => Math.abs(drawnOf(dimension) - dimension.value) > Math.max(0.5, dimension.value * 0.03))
+      : [];
+    const culprit = odd.length === 1 ? odd[0] : null;
+    const culpritNote = culprit
+      ? ` · 그려진 길이로 재면 ${culprit === total ? "전체 치수" : "직렬 치수"} ${culprit.text.text} 부분은 약 ${format(drawnOf(culprit))}(mm)로 그려져 있어요`
+      : "";
     findings.push({
       classification: "틀림",
-      analysis_item_ids: [total.text.id],
-      location: where(total.text),
-      what: `전체 치수 ${total.text.text} ≠ 직렬 치수 합계 ${format(sum)}`,
+      analysis_item_ids: culprit && culprit !== total ? [culprit.text.id, total.text.id] : [total.text.id],
+      location: where((culprit ?? total).text),
+      what: `전체 치수 ${total.text.text} ≠ 직렬 치수 합계 ${format(sum)}${culpritNote}`,
       why: `${parts} = ${format(sum)}인데 전체는 ${total.text.text}예요.`,
-      evidence: `전체 치수선과 직렬 치수선의 양 끝 좌표가 같아요(x ${Math.round(total.x0)}~${Math.round(total.x1)}).`,
+      evidence: `전체 치수선과 직렬 치수선의 양 끝 좌표가 같아요(x ${Math.round(total.x0)}~${Math.round(total.x1)}).${culprit
+        ? ` 치수선 길이 ${format(culprit.x1 - culprit.x0)}pt ÷ 축척 ${format(scale)}pt/mm(가로 치수들로 계산) ≈ ${format(drawnOf(culprit))}`
+        : ""}`,
       confidence: "높음",
-      confidence_reason: "치수선 끝 좌표가 서로 정확히 이어지고 숫자도 파일에 저장된 값이라 계산 결과가 분명해요.",
-      how_to_resolve: "전체 치수나 직렬 치수 중 틀린 쪽을 고쳐 주세요.",
+      confidence_reason: `치수선 끝 좌표가 서로 정확히 이어지고 숫자도 파일에 저장된 값이라 계산 결과가 분명해요.${culprit
+        ? " 어느 치수가 틀렸는지는 그려진 길이로 추정한 것이라, 축척을 무시하고 그린 부분이면 다를 수 있어요."
+        : ""}`,
+      how_to_resolve: culprit
+        ? `${culprit.text.text} 치수(그려진 길이 약 ${format(drawnOf(culprit))})부터 확인해 고쳐 주세요.`
+        : "전체 치수나 직렬 치수 중 틀린 쪽을 고쳐 주세요.",
       next_check: "원본 도면에서 전체 치수와 직렬 치수가 같은 두 끝을 잇는지 확인해 주세요.",
     });
   }
@@ -262,9 +278,14 @@ function drawingScale(dimensions) {
     .map((dimension) => (dimension.x1 - dimension.x0) / dimension.value)
     .sort((a, b) => a - b);
   if (ratios.length < 3) return null;
-  const middle = ratios[Math.floor(ratios.length / 2)];
-  const agreeing = ratios.filter((ratio) => Math.abs(ratio - middle) <= middle * 0.02);
-  return agreeing.length >= Math.ceil(ratios.length * 0.7) ? middle : null;
+  // 표 칸 숫자처럼 치수가 아닌 글자도 섞일 수 있어서, 가장 많이 서로 맞는 묶음을 축척으로 써요.
+  let best = [];
+  for (const ratio of ratios) {
+    const group = ratios.filter((other) => Math.abs(other - ratio) <= ratio * 0.02);
+    if (group.length > best.length) best = group;
+  }
+  if (best.length < 3 || best.length < ratios.length / 2) return null;
+  return best[Math.floor(best.length / 2)];
 }
 
 function checkDrawnKeyWidths(texts, elements, dimensions) {
@@ -463,7 +484,7 @@ function compareWithSheet(sheet, texts, rows, dimensions, findings) {
     if (item.fit && same.length && !same.some((entry) => entry.fit === item.fit)) {
       extra.push({
         classification: "틀림",
-        issue_type: "문제지 불일치",
+        issue_type: "표기 불일치",
         basis: SHEET_BASIS,
         analysis_item_ids: same.flatMap((entry) => entry.ids),
         location: where(same[0].row.pieces[0]),
@@ -475,11 +496,13 @@ function compareWithSheet(sheet, texts, rows, dimensions, findings) {
         how_to_resolve: "문제지에 맞게 끼워맞춤 기호를 고쳐 주세요.",
         next_check: "문제지 조립도에서 이 구간의 부품을 확인해 주세요.",
       });
+      // 부품은 문제지로 알았으니 같은 구간 질문은 다시 하지 않아요.
+      for (const entry of same) answered.add(`${format(entry.size)}${entry.fit}`);
     } else if (same.length || plain.length) {
       if (item.fit && !same.length) {
         extra.push({
           classification: "확인 필요",
-          issue_type: "문제지 불일치",
+          issue_type: "누락",
           basis: SHEET_BASIS,
           analysis_item_ids: plain.flatMap((row) => row.pieces.map((piece) => piece.id)).slice(0, 3),
           location: where(plain[0].pieces[0]),
@@ -498,7 +521,7 @@ function compareWithSheet(sheet, texts, rows, dimensions, findings) {
     } else {
       extra.push({
         classification: "확인 필요",
-        issue_type: "문제지 불일치",
+        issue_type: "누락",
         basis: SHEET_BASIS,
         analysis_item_ids: [],
         location: "도면 전체",
@@ -535,7 +558,7 @@ function compareWithSheet(sheet, texts, rows, dimensions, findings) {
     } else if (wrong.length) {
       extra.push({
         classification: "틀림",
-        issue_type: "문제지 불일치",
+        issue_type: "표기 불일치",
         basis: SHEET_BASIS,
         analysis_item_ids: wrong.flatMap((entry) => entry.ids),
         location: where(wrong[0].row.pieces[0]),
@@ -565,7 +588,7 @@ function compareWithSheet(sheet, texts, rows, dimensions, findings) {
       } else {
         extra.push({
           classification: "틀림",
-          issue_type: "문제지 불일치",
+          issue_type: "표기 불일치",
           basis: SHEET_BASIS,
           analysis_item_ids: [longest.text.id],
           location: where(longest.text),
@@ -582,7 +605,68 @@ function compareWithSheet(sheet, texts, rows, dimensions, findings) {
       passed.push({ item: "축 전체 길이", location: where(longest.text), reason: `문제지에서 확인: ${format(sheet.totalLength)}과 같아요.`, analysis_item_ids: [longest.text.id] });
     }
   }
-  return { extra, passed, answered };
+  return { extra, passed, answered, roughness: checkSheetRoughness(sheet, texts, rows, dimensions) };
+}
+
+// ── 문제지 부품 자리의 표면 거칠기 기호 ──────────────────────────
+// 문제지에 적힌 부품 자리(지름 구간)마다 w·x·y·z 거칠기 글자가 그 구간 위아래 가까이에 있는지 봐요.
+const ROUGHNESS_LETTER = /^[wxyz]$/;
+
+function checkSheetRoughness(sheet, texts, rows, dimensions) {
+  const result = { extra: [], passed: [] };
+  const scale = drawingScale(dimensions);
+  const letters = texts.filter((text) => ROUGHNESS_LETTER.test(text.text));
+  // 축척을 모르거나 거칠기를 글자 기호로 쓰지 않은 도면이면 보지 않아요.
+  if (!scale || !letters.length) return result;
+  const totals = dimensions.filter((dimension) => findChain(dimension, dimensions));
+  const longest = totals.sort((a, b) => (b.x1 - b.x0) - (a.x1 - a.x0))[0];
+  const chain = longest ? findChain(longest, dimensions) : null;
+  if (!chain) return result;
+  const reach = 25 * scale;
+  const seen = new Set();
+  for (const item of sheet.parts) {
+    const pieces = rows.flatMap((row) => [...row.text.matchAll(PLAIN_DIAMETER)]
+      .filter((match) => Number(match[1]) === item.size)
+      .map((match) => row.pieces.find((piece) => idsAt(row, match).includes(piece.id)) ?? row.pieces[0]));
+    for (const piece of pieces) {
+      const cx = (piece.x0 + piece.x1) / 2;
+      const cy = (piece.y0 + piece.y1) / 2;
+      const span = chain.find((dimension) => dimension.text.page === piece.page && dimension.x0 <= cx && cx <= dimension.x1);
+      if (!span) continue;
+      const key = `${span.x0}:${span.x1}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const margin = 2 * scale;
+      const found = letters.find((letter) => letter.page === piece.page
+        && (letter.x0 + letter.x1) / 2 >= span.x0 - margin && (letter.x0 + letter.x1) / 2 <= span.x1 + margin
+        && Math.abs((letter.y0 + letter.y1) / 2 - cy) <= reach);
+      const label = `Ø${format(item.size)}${item.fit ?? ""}`;
+      if (found) {
+        result.passed.push({
+          item: `${label} 구간 표면 거칠기`,
+          analysis_item_ids: [found.id, piece.id],
+          location: where(found),
+          reason: `문제지 부품(${item.part}) 자리에 거칠기 기호 ${found.text}가 있어요(코드로 위치 확인).`,
+        });
+        continue;
+      }
+      result.extra.push({
+        classification: "확인 필요",
+        issue_type: "누락",
+        basis: SHEET_BASIS,
+        analysis_item_ids: [piece.id, span.text.id],
+        location: where(piece),
+        what: `${label} 구간(${item.part}): 표면 거칠기 기호를 찾지 못했어요.`,
+        why: "문제지에서 부품이 끼워지는 자리인데, 이 구간 가까이에 w·x·y·z 거칠기 기호가 없어요.",
+        evidence: `문제지 "${item.text}", 도면 "${piece.text}" 구간(가로 치수 ${span.text.text}) 위아래 약 25mm 안에 거칠기 글자 없음`,
+        confidence: "중간",
+        confidence_reason: "거칠기 기호를 w·x·y·z 한 글자로만 찾아요. 그림 기호만 그렸거나 멀리 떨어져 있으면 놓칠 수 있어요.",
+        how_to_resolve: "부품이 끼워지는 면이면 알맞은 표면 거칠기 기호를 넣어 주세요.",
+        next_check: "원본 도면에서 이 구간 표면에 거칠기 기호가 있는지 확인해 주세요.",
+      });
+    }
+  }
+  return result;
 }
 
 // ② 형식 1.1 자료(객체 또는 JSON 글)를 받아 ③ 검토 결과(2.0)와 같은 모양의 코드 점검 결과를 돌려줘요.
@@ -600,7 +684,7 @@ export function reviewCodeReadAnalysis(analysis, { problemSheet = null } = {}) {
   const own = [...chain.findings, ...checkFitSizes(rows), ...checkKeywayWidths(rows), ...drawnKeys.findings, ...datums.findings];
   const sheet = problemSheet ? compareWithSheet(problemSheet, texts, rows, dimensions, own) : null;
   const asked = askFittedParts(rows).filter((finding) => !sheet?.answered.has(finding.question.text.match(/^Ø([^ ]+)/)?.[1]));
-  const raw = [...own, ...(sheet?.extra ?? []), ...asked];
+  const raw = [...own, ...(sheet?.extra ?? []), ...(sheet?.roughness.extra ?? []), ...asked];
   const findings = raw.map((finding, index) => ({
     id: `${CODE_FINDING_PREFIX}${String(index + 1).padStart(2, "0")}`,
     issue_type: "표기 불일치",
@@ -622,12 +706,12 @@ export function reviewCodeReadAnalysis(analysis, { problemSheet = null } = {}) {
     reviewed_pages: pages,
     unreviewed_pages: [],
     findings,
-    not_missing: [...chain.passed, ...drawnKeys.passed, ...datums.passed, ...(sheet?.passed ?? [])],
+    not_missing: [...chain.passed, ...drawnKeys.passed, ...datums.passed, ...(sheet?.passed ?? []), ...(sheet?.roughness.passed ?? [])],
     limitations: [
-      "코드 점검은 5가지 규칙만 봐요: ① 가로 직렬 치수 합계와 전체 치수, ② 같은 끼워맞춤 기호(예: k6)가 붙은 지름 치수와 주석, ③ 키홈 폭 주석끼리, ④ N9·P9 키홈 폭 글자와 그려진 폭(가로 치수로 구한 축척 사용), ⑤ 기하공차가 참조하는 데이텀이 도면에 있는지.",
+      "코드 점검은 5가지 규칙만 봐요: ① 가로 직렬 치수 합계와 전체 치수(틀리면 그려진 길이로 어느 치수가 다른지 추정), ② 같은 끼워맞춤 기호(예: k6)가 붙은 지름 치수와 주석, ③ 키홈 폭 주석끼리, ④ N9·P9 키홈 폭 글자와 그려진 폭(가로 치수로 구한 축척 사용), ⑤ 기하공차가 참조하는 데이텀이 도면에 있는지.",
       "세로 치수, 지시선이 가리키는 대상, 설계 의도, 규격(KS) 적합성은 코드로 보지 않아요. 필요하면 ‘피드백 받기’로 ③ 검토를 이어서 받으세요.",
       "같은 부위인지 확실하지 않으면 '확인 필요'(노랑)로 남겼어요. 결과는 사람이 원본 도면과 직접 비교해야 해요.",
-      ...(problemSheet ? [`문제지(${problemSheet.fileName || "선택한 파일"})의 '조립 정보' 표 글자와도 대조했어요. 조립도 그림은 코드로 해석하지 않아요.`] : []),
+      ...(problemSheet ? [`문제지(${problemSheet.fileName || "선택한 파일"})의 '조립 정보' 표 글자와도 대조했어요. 문제지에 적힌 부품 자리에는 w·x·y·z 표면 거칠기 글자가 근처에 있는지도 봐요. 조립도 그림과 기하공차가 빠졌는지는 코드로 보지 않아요.`] : []),
       "끼워맞춤 지름 구간에 들어가는 부품이 도면에 없으면 추측하지 않고 '질문'(파랑)으로 물어봐요. 답은 이 화면에만 기록되고 아직 추가 점검에는 쓰지 않아요.",
     ],
     human_review_status: "미확인",

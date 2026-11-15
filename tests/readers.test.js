@@ -2174,9 +2174,42 @@ test("문제지 대조: 끼워맞춤이 다르면 틀림, 지름이 없으면 �
     { size: 30, fit: "h7", part: "기어", text: "Ø30 h7 : 기어" },
   ] };
   const review = reviewCodeReadAnalysis({ pages: [{ page_number: 1 }], elements: [text("E1", "Ø20js6", 10, 10)] }, { problemSheet: sheet });
-  const [fit, missing] = review.findings.filter((finding) => finding.issue_type === "문제지 불일치");
+  parseAgentResult(JSON.stringify(review));
+  const [fit, missing] = review.findings.filter((finding) => finding.what.startsWith("Ø") || finding.what.includes("문제지"));
   assert(fit.classification === "틀림" && fit.what.includes("k6") && fit.what.includes("js6") && fit.analysis_item_ids[0] === "E1", JSON.stringify(fit));
   assert(missing.classification === "확인 필요" && missing.what.includes("Ø30h7"), JSON.stringify(missing));
+});
+test("V벨트 기출형 연습: 문제지를 읽고 기준 도면은 거칠기까지 오탐 0건", async () => {
+  const sheet = readProblemSheet(await codeReadInput("vbelt-exam-problem-sheet.pdf"));
+  assert(sheet.keywayWidth === 5 && sheet.totalLength === 123, JSON.stringify(sheet));
+  assert(sheet.parts.map((part) => `${part.size}${part.fit ?? ""}`).join(",") === "17k6,16,14h6", JSON.stringify(sheet.parts));
+  assert(sheet.parts[1].part.startsWith("오일실"), sheet.parts[1].part);
+  const plain = await codeReviewOf("vbelt-shaft-exam-style-reference.pdf");
+  assert(!plain.issues.length, JSON.stringify(plain.issues.map((finding) => finding.what)));
+  const reference = await codeReviewOf("vbelt-shaft-exam-style-reference.pdf", { problemSheet: sheet });
+  assert(!reference.issues.length && !reference.questions.length, JSON.stringify(reference.review.findings.map((finding) => finding.what)));
+  const rough = reference.review.not_missing.filter((item) => item.item.includes("표면 거칠기"));
+  assert(rough.length === 4 && rough.every((item) => item.analysis_item_ids.length === 2), JSON.stringify(rough));
+});
+test("V벨트 기출형 연습: 비교본의 숨긴 틀림 4개(문제지 없이 3개)를 찾고 틀린 치수 42를 가리킴", async () => {
+  const sheet = readProblemSheet(await codeReadInput("vbelt-exam-problem-sheet.pdf"));
+  const alone = await codeReviewOf("vbelt-shaft-exam-style-challenge.pdf");
+  const chain = alone.issues.find((finding) => finding.what.includes("직렬 치수 합계"));
+  assert(chain?.classification === "틀림" && chain.what.includes("42") && chain.what.includes("약 44"), chain?.what);
+  assert(alone.text(chain.analysis_item_ids[0]) === "42" && alone.text(chain.analysis_item_ids[1]) === "123", chain.analysis_item_ids.map(alone.text).join(","));
+  const keyway = alone.issues.find((finding) => finding.what.includes("6N9"));
+  assert(keyway?.classification === "틀림" && keyway.what.includes("약 5"), keyway?.what);
+  assert(alone.issues.some((finding) => finding.what.includes("k6") && finding.what.includes("17, 14")));
+  assert(!alone.issues.some((finding) => finding.what.includes("거칠기")), "문제지 없이는 거칠기 자리를 알 수 없어요.");
+  const { review, issues, questions } = await codeReviewOf("vbelt-shaft-exam-style-challenge.pdf", { problemSheet: sheet });
+  parseAgentResult(JSON.stringify(review));
+  const fit = issues.find((finding) => finding.what.startsWith("Ø14 끼워맞춤"));
+  assert(fit?.classification === "틀림" && fit.what.includes("h6") && fit.what.includes("k6"), fit?.what);
+  const rough = issues.find((finding) => finding.what.includes("표면 거칠기"));
+  assert(rough?.classification === "확인 필요" && rough.what.startsWith("Ø16") && rough.what.includes("오일실"), rough?.what);
+  assert(issues.filter((finding) => finding.what.includes("거칠기")).length === 1, JSON.stringify(issues.map((finding) => finding.what)));
+  assert(!questions.length, `문제지로 부품을 알면 다시 묻지 않아야 해요: ${questions.map((finding) => finding.what).join(" / ")}`);
+  assert(review.limitations.some((item) => item.includes("거칠기")));
 });
 test("코드 점검 질문: 부품 표시가 없는 끼워맞춤 지름 구간은 파랑 '질문'으로 물어봄", async () => {
   const { review, questions, text } = await codeReviewOf("shaft-exam-style-reference.pdf");
@@ -2244,13 +2277,15 @@ test("화면: 코드 점검으로 틀린 숫자를 바로 빨간 동그라미로
     const frameBox = () => viewport.querySelector(".review-drawing-frame").getBoundingClientRect();
     const markerBox = () => viewport.querySelector(".feedback-marker").getBoundingClientRect();
     const [zoomOut, zoomIn, reset] = [...app.querySelectorAll(".zoom-controls .zoom-button")];
-    const before = { frame: frameBox(), marker: markerBox() };
+    const before = { frame: frameBox(), marker: markerBox(), inner: viewport.clientWidth };
     assert(zoomOut.disabled && reset.disabled && app.querySelector(".zoom-level").textContent === "100%");
     zoomIn.click();
     zoomIn.click();
-    const after = { frame: frameBox(), marker: markerBox() };
-    assert(app.querySelector(".zoom-level").textContent === "200%" && close(after.frame.width, before.frame.width * 2, 2),
-      `두 배로 커져야 해요: ${before.frame.width} → ${after.frame.width}`);
+    const after = { frame: frameBox(), marker: markerBox(), inner: viewport.clientWidth };
+    // 확대하면 보기 칸에 세로 스크롤 막대가 생겨 안쪽 폭이 줄 수 있어서, 안쪽 폭 대비 배율로 비교해요.
+    assert(app.querySelector(".zoom-level").textContent === "200%"
+      && close(after.frame.width / after.inner, (before.frame.width / before.inner) * 2, 0.01),
+      `두 배로 커져야 해요: ${before.frame.width}/${before.inner} → ${after.frame.width}/${after.inner}`);
     const relative = (box) => (box.marker.left + box.marker.width / 2 - box.frame.left) / box.frame.width;
     assert(close(relative(after), relative(before), 0.01), "확대해도 동그라미는 같은 도면 위치에 있어야 해요.");
     assert(viewport.scrollWidth > viewport.clientWidth, "확대하면 스크롤로 움직일 수 있어야 해요.");

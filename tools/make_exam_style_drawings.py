@@ -1,4 +1,4 @@
-"""기능사 양식 축 연습 도면(기준·비교)과 짝 문제지 HTML을 Chrome으로 벡터 PDF 세 장으로 만들어요.
+"""기능사 양식 축 연습 도면(기준·비교)과 짝 문제지 HTML을 Chrome으로 벡터 PDF로 만들어요.
 
 사용법: python3 tools/make_exam_style_drawings.py
 Chrome 위치가 다르면 환경 변수 CHROME에 실행 파일 경로를 넣어 주세요. 외부 패키지는 필요 없어요.
@@ -17,6 +17,9 @@ JOBS = [
     ("shaft-exam-style.html?variant=reference", "shaft-exam-style-reference.pdf"),
     ("shaft-exam-style.html?variant=challenge", "shaft-exam-style-challenge.pdf"),
     ("shaft-exam-problem-sheet.html", "shaft-exam-problem-sheet.pdf"),
+    ("vbelt-shaft-exam-style.html?variant=reference", "vbelt-shaft-exam-style-reference.pdf"),
+    ("vbelt-shaft-exam-style.html?variant=challenge", "vbelt-shaft-exam-style-challenge.pdf"),
+    ("vbelt-exam-problem-sheet.html", "vbelt-exam-problem-sheet.pdf"),
 ]
 
 
