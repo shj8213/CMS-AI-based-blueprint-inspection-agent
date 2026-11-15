@@ -1284,6 +1284,21 @@ agentTest("도면 위 표시: 좌표가 확실한 피드백만 페이지별 빨�
   assert(pageMatches(first, { width: 300, height: 240 }) && !pageMatches(first, { width: 240, height: 300 }));
 });
 
+agentTest("도면 위 표시: 위치가 없는 지적은 글 속 x 좌표 범위로 세로 띠 후보를 계산", async () => {
+  const analysis = { pages: [{ page_number: 1, width: 842, height: 595 }], elements: [] };
+  const review = { findings: [
+    { id: "R01", classification: "확인 필요", analysis_item_ids: [], what: "왼쪽 상자 x≈283.4~285.8, 오른쪽 상자 x≈341.3~343.8" },
+    { id: "R02", classification: "틀림", analysis_item_ids: [], what: "좌표 없음" },
+    { id: "R03", classification: "틀림", analysis_item_ids: [], what: "x≈0~800처럼 너무 넓은 범위" },
+  ] };
+  const markers = buildFeedbackMarkers(review, analysis);
+  const bands = markers[0].placements;
+  assert(bands.length === 2 && bands.every((item) => item.band && item.candidate && item.page === 1), JSON.stringify(bands));
+  assert(Math.abs(bands[0].x - 284.6 / 842) < 1e-9 && bands[0].bandWidth > 2.4 / 842, JSON.stringify(bands[0]));
+  assert(!markers[1].placements.length && !markers[2].placements.length, "좌표가 없거나 너무 넓으면 그리지 않아야 해요.");
+  assert(mergeOverlappingMarkers(markers)[0].placements.every((item) => !item.hidden), "띠는 동그라미 합치기에서 빠져야 해요.");
+});
+
 agentTest("도면 위 표시: 한 피드백은 글자 위치 위주로 최대 3개만, 너무 큰 원은 그리지 않음", async () => {
   const page = { page_number: 1, width: 600, height: 400, coordinate_unit: "pt", coordinate_origin: "왼쪽 위" };
   const text = (id, x) => ({ id, page_number: 1, raw_text: String(x), location: { coordinate_unit: "pt", bbox: [x, 100, x + 12, 108] } });
