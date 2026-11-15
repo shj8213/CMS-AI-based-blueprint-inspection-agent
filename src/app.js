@@ -12,6 +12,7 @@ import {
 } from "./studio-connection.js";
 import { createAnalysisHistory, fileFingerprint } from "./analysis-history.js";
 import { buildReferenceExamples, REFERENCE_FILE_NAME } from "./reference-examples.js";
+import { buildMemoryText, createReviewMemory } from "./review-memory.js";
 
 const $ = (selector) => document.querySelector(selector);
 const agentResultView = createAgentResultView();
@@ -19,6 +20,10 @@ const historyName = new URLSearchParams(window.location.search).get("history");
 const analysisHistory = createAnalysisHistory({
   key: historyName === "test" ? "blueprint-analysis-history-test" : "blueprint-analysis-history-v1",
 });
+const reviewMemory = createReviewMemory({
+  key: historyName === "test" ? "blueprint-review-memory-test" : "blueprint-review-memory-v1",
+});
+let similarMemory = null;
 const savedTime = (value) => new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 const fileInput = $("#file-input");
 const feedbackFileInput = $("#feedback-file-input");
@@ -203,6 +208,7 @@ function setBusy(value, kind = null) {
   $("#cancel-feedback").hidden = !value || kind !== "review";
   $("#cancel-feedback").disabled = false;
   for (const button of document.querySelectorAll("#history-panel button, #history-panel input, #open-saved-match")) button.disabled = value;
+  $("#clear-memory").disabled = value;
   if (!value) updateReferenceButton();
 }
 
@@ -211,6 +217,8 @@ function updateFeedbackAction() {
     && Boolean(activeAnalysisEntry)
     && Boolean(activeAnalysisFile || activeAnalysisEntry.fingerprint);
   $("#feedback-actions").hidden = !available;
+  if (available) updateMemoryMatch();
+  else $("#memory-match").hidden = true;
   $("#feedback-start-button").disabled = busy || !available;
 }
 
@@ -270,9 +278,22 @@ function downloadReferences() {
     `참고 예제 ${count}개를 ${REFERENCE_FILE_NAME} 파일로 내려받았어요. 열어서 내용을 확인한 뒤 Studio에 올려 주세요.`;
 }
 
+function updateMemoryMatch() {
+  similarMemory = activeAnalysisEntry?.kind === "review"
+    ? null
+    : reviewMemory.findSimilar(activeAnalysisEntry?.response ?? "", activeAnalysisEntry?.fingerprint ?? null);
+  $("#memory-consent").checked = false;
+  $("#memory-match").hidden = !similarMemory;
+  $("#memory-preview").textContent = similarMemory ? buildMemoryText(similarMemory.entry) : "";
+}
+
 function renderHistory() {
   const entries = analysisHistory.list();
+  const memoryCount = reviewMemory.list().length;
   $("#history-panel").hidden = !entries.length;
+  $("#memory-panel").hidden = !memoryCount;
+  $("#clear-memory").textContent = `검토 기억 모두 삭제 (${memoryCount}개)`;
+  $("#clear-memory").disabled = busy || !memoryCount;
   $("#reference-status").textContent = "";
   updateReferenceButton();
   $("#history-list").replaceChildren(...entries.map((entry) => {
@@ -872,6 +893,7 @@ async function requestFeedback(file = activeAnalysisFile) {
     }
     const reviewResponse = await reviewDrawingWithStudio(file, {
       analysisResult: activeAnalysisEntry.response,
+      memoryText: similarMemory && $("#memory-consent").checked ? buildMemoryText(similarMemory.entry) : "",
       hostedAccess: hostedTokens,
       signal: agentController.signal,
       onProgress: (message) => {
@@ -880,6 +902,12 @@ async function requestFeedback(file = activeAnalysisFile) {
       },
     });
     agentResultView.showResponse(reviewResponse, activeAnalysisEntry.response);
+    reviewMemory.save({
+      fingerprint: activeAnalysisEntry.fingerprint,
+      analysisResponse: activeAnalysisEntry.response,
+      reviewResponse,
+    });
+    renderHistory();
     const reviewSaved = activeAnalysisEntry.id
       && analysisHistory.saveReview(activeAnalysisEntry.id, reviewResponse);
     if (reviewSaved) {
@@ -888,6 +916,7 @@ async function requestFeedback(file = activeAnalysisFile) {
       if (file === chosenFile) await checkSavedMatch(file);
     }
     $("#feedback-actions").hidden = true;
+    $("#memory-match").hidden = true;
     $("#agent-result-error").textContent = "";
     $("#agent-result-progress").textContent = reviewSaved
       ? "③ 피드백을 받았고 결과를 이 브라우저에 저장했어요. 원본 도면과 직접 비교해 주세요."
@@ -934,6 +963,13 @@ $("#open-saved-match").addEventListener("click", (event) => (
   openSaved(event.currentTarget.dataset.id, event.currentTarget.dataset.resultType)
 ));
 $("#download-references").addEventListener("click", downloadReferences);
+$("#clear-memory").addEventListener("click", () => {
+  if (busy || !window.confirm("저장된 검토 기억을 모두 삭제할까요? 분석·검토 결과는 지워지지 않고, 되돌릴 수 없어요.")) return;
+  reviewMemory.clear();
+  similarMemory = null;
+  $("#memory-match").hidden = true;
+  renderHistory();
+});
 $("#clear-history").addEventListener("click", () => {
   if (busy || !window.confirm("저장된 분석·검토 결과를 모두 삭제할까요? 되돌릴 수 없어요.")) return;
   analysisHistory.clear();
