@@ -888,6 +888,7 @@ export function createAgentResultView() {
   button.addEventListener("click", async () => {
     const currentGeneration = ++generation;
     const text = input.value;
+    $("#review-feedback-part").hidden = false;
     output.hidden = true;
     reviewOutput.hidden = true;
     $("#analysis-result-details").hidden = true;
@@ -926,6 +927,7 @@ export function createAgentResultView() {
     showResponse(text, analysisText = null, file = null, { onVerdict = null } = {}) {
       verdictHandler = onVerdict;
       error.textContent = "";
+      $("#review-feedback-part").hidden = false;
       showResult(text, "②의 응답을 표시했어요.", analysisText, file);
     },
     openManual() {
