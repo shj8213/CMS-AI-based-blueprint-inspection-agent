@@ -610,6 +610,7 @@
       .start-button:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(247, 103, 7, .28); }
       .start-button:active:not(:disabled), .select-button:active:not(:disabled) { transform: scale(.98); }
       .start-button:not(:disabled) { animation: ring 2.2s ease-out 1; }
+      .progress-fill.done { animation: none; background-image: linear-gradient(90deg, #ffa94d, #f76707); }
       .progress-fill { background-image: linear-gradient(90deg, rgba(255, 255, 255, 0) 0, rgba(255, 255, 255, .55) 50%, rgba(255, 255, 255, 0) 100%), linear-gradient(90deg, #ffa94d, #f76707); background-size: 120px 100%, 100% 100%; background-repeat: no-repeat; animation: bar-shine 1.4s linear infinite; }
       .more-info > summary { transition: color .2s; }
       .more-info > summary:hover { color: #e8590c; }
@@ -663,7 +664,7 @@
           </div>
           <div class="intro-section">
             <h2>이런 걸 해 드려요</h2>
-            <p>PDF와 DXF 도면을 지원해요.</p>
+            <p>PDF 도면을 지원해요.</p>
             <div class="feature-grid">
               <div class="feature-card"><h3>도면 읽기</h3><p>선, 원, 글자와 치수를 자동으로 찾아 정리해요.</p></div>
               <div class="feature-card"><h3>피드백 안내</h3><p>고쳐야 할 곳을 글로 설명하고 도면 위에 표시해요.</p></div>
@@ -673,7 +674,7 @@
             <h2>사용 순서</h2>
             <p>세 단계로 끝나요.</p>
             <div class="flow-grid">
-              <div class="flow-card"><div class="flow-num">1</div><h3>도면 올리기</h3><p>PDF 또는 DXF 파일을 끌어 놓아요.</p></div>
+              <div class="flow-card"><div class="flow-num">1</div><h3>도면 올리기</h3><p>PDF 파일을 끌어 놓아요.</p></div>
               <div class="flow-card"><div class="flow-num">2</div><h3>분석하기</h3><p>버튼 한 번으로 도면을 읽어요.</p></div>
               <div class="flow-card"><div class="flow-num">3</div><h3>피드백 보기</h3><p>도면 위에서 고칠 곳을 확인해요.</p></div>
             </div>
@@ -701,13 +702,13 @@
             <div class="drop-area" id="drop-area">
               <div class="upload-icon" aria-hidden="true">↑</div>
               <div class="drop-title">파일을 여기에 끌어 놓으세요</div>
-              <p class="drop-help">PDF 또는 DXF 파일을 고를 수 있어요</p>
+              <p class="drop-help">PDF 파일을 고를 수 있어요</p>
               <button class="select-button" id="select-button" type="button">파일 선택</button>
               <input
                 class="hidden-input"
                 id="file-input"
                 type="file"
-                aria-label="DXF 또는 PDF 도면 파일 선택"
+                aria-label="PDF 도면 파일 선택"
               >
             </div>
             <div id="file-list" aria-live="polite"></div>
@@ -739,12 +740,10 @@
           <details class="more-info">
             <summary>도움말과 예제</summary>
             <div class="more-info-body">
-              <p class="privacy-note">도면 분석을 선택하면 PDF가 Microsoft에 전송되고 사용량이 발생할 수 있어요. 첨부 파일은 대화의 마지막 활동 이후 28일 동안 보관될 수 있어요. DXF는 PDF로 변환해 주세요.</p>
+              <p class="privacy-note">도면 분석을 선택하면 PDF가 Microsoft에 전송되고 사용량이 발생할 수 있어요. 첨부 파일은 대화의 마지막 활동 이후 28일 동안 보관될 수 있어요.</p>
               <p class="privacy-note">‘도면 분석하기’는 일반(벡터) PDF의 선·원·글자 좌표를 이 브라우저에서 코드로 읽어 바로 점검해요. 전송 없이 몇 초면 끝나요. 이후 ‘피드백 받기’를 누를 때만 원본 PDF와 읽은 자료가 ③으로 전송돼요. 스캔(그림) PDF는 코드로 정확히 읽을 수 없어서, 전송 동의를 체크하면 Microsoft ②로 분석해요.</p>
               <p class="privacy-note">‘이 브라우저에서만 읽기’를 선택하면 파일을 외부로 보내지 않아요. 스캔 PDF의 글자는 OCR로 찾으므로 원본과 비교해 주세요.</p>
-              <p class="privacy-note">확인용 예제 받기: <a href="./tests/fixtures/simple.dxf" download>DXF</a> · <a href="./tests/fixtures/simple.pdf" download>일반 PDF</a> · <a href="./tests/fixtures/scan.pdf" download>스캔 PDF</a></p>
-              <p class="privacy-note">검토 시험용 DXF 받기: <a href="./tests/fixtures/review-a.dxf" download>예제 A</a> · <a href="./tests/fixtures/review-b.dxf" download>예제 B</a> · <a href="./tests/fixtures/review-c.dxf" download>예제 C</a> — 개인정보·기밀이 없는 가상 자료예요.</p>
-              <p class="privacy-note">축 분석 연습: <a href="./tests/fixtures/shaft-practice-reference.pdf" download>기준 도면</a> · <a href="./tests/fixtures/shaft-practice-challenge.pdf" download>비교 도면</a> — 비교 도면의 불일치를 먼저 찾고, 분석 후 정답표를 확인하세요.</p>
+              <p class="privacy-note">예제 도면 받기: <a href="tests/fixtures/example-shaft-2.pdf" download>예제 1</a> · <a href="tests/fixtures/example-shaft-3.pdf" download>예제 2</a> · <a href="tests/fixtures/example-vbelt-shaft.pdf" download>예제 3</a></p>
               <p class="privacy-note">현재 1차 시험은 단일 축 부품도를 중심으로 진행해요. 다른 종류 도면의 업로드를 막지는 않지만 축이라고 단정하지 않도록 안내해요. ‘도면 분석하기’는 PDF를 Microsoft 서비스에 보내요. 전송 권한이 있고 개인정보·기밀이 없는 도면만 사용해 주세요. 분석은 참고용이며 중요한 내용은 원본과 직접 비교해 주세요.</p>
               <h3>이미 받은 분석 결과가 있나요?</h3>
               <button class="select-button" id="agent-result-only" type="button">기존 결과 직접 보기</button>
@@ -828,6 +827,7 @@
                 <span id="problem-sheet-name">선택 안 함</span>
                 <button class="select-button" id="problem-sheet-remove" type="button" hidden>빼기</button>
                 <p class="privacy-note" id="problem-sheet-status" role="status"></p>
+                <p class="privacy-note">예제 문제지 받기: <a href="tests/fixtures/example-problem-shaft-2.pdf" download>예제 1 문제지</a> · <a href="tests/fixtures/example-problem-shaft-3.pdf" download>예제 2 문제지</a> · <a href="tests/fixtures/example-problem-vbelt.pdf" download>예제 3 문제지</a> — 위 예제 도면과 짝이에요. 개인정보·기밀이 없는 가상 자료예요.</p>
                 <p class="privacy-note">문제지 PDF에 ‘조립 정보’ 표(예: <code>Ø20 k6 : 베어링 6204</code>, <code>키홈 폭 6</code>, <code>축 전체 길이 118</code>)가 있으면 홈페이지가 전송 없이 도면 글자와 대조해요. 문제지는 부품이 어디에 끼워지는지 알려 주는 참고 자료로만 써요. 저장되지 않고, 기능사 문제지는 저작권이 있으니 저장소·공개 사이트에 올리지 마세요.</p>
               </div>
               <div class="saved-match" id="memory-match" hidden>
@@ -901,6 +901,7 @@
             <div id="review-agent-result-output" hidden>
               <h3>도면 간단 설명</h3>
               <p class="agent-summary" id="shaft-analysis-summary"></p>
+              <div id="review-feedback-part">
               <h3>검토 결과</h3>
               <dl class="agent-overview">
                 <div><dt>검토 상태</dt><dd id="review-agent-status"></dd></div>
@@ -936,6 +937,7 @@
                   <div id="review-agent-limitations"></div>
                 </div>
               </details>
+              </div>
               <p class="subtext">이 화면은 JSON을 이 브라우저 안에서만 읽어요. 결과는 설계 승인이나 규격 인증이 아니며, 사람의 확인 상태는 바뀌지 않아요.</p>
             </div>
             <details class="agent-details" id="agent-manual">

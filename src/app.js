@@ -8,10 +8,13 @@ import {
   analyzeDrawingWithStudio,
   getHostedStudioConfig,
   getHostedStudioToken,
+  hasLeadConnection,
+  leadDrawingWithStudio,
   problemSheetType,
   reviewDrawingWithStudio,
   StudioConnectionError,
 } from "./studio-connection.js";
+import { clearAnalyzedFiles, loadAnalyzedFile, saveAnalyzedFile } from "./file-store.js";
 import { createAnalysisHistory, fileFingerprint } from "./analysis-history.js";
 import { buildReferenceExamples, REFERENCE_FILE_NAME } from "./reference-examples.js";
 import { combineMemoryText, createReviewMemory } from "./review-memory.js";
@@ -55,6 +58,7 @@ let agentController = null;
 let chosenFingerprint = null;
 let fileToken = 0;
 let hostedMode = false;
+let leadConnected = false;
 let hostedSetupError = false;
 let hostedWidgetId = null;
 let hostedChallengeResolve = null;
@@ -63,6 +67,8 @@ let hostedChallengeTimer = null;
 let hostedChallengeSignal = null;
 let activeAnalysisEntry = null;
 let activeAnalysisFile = null;
+// 이 탭에서 분석한 PDF를 기억해 두면, 저장 목록에서 다시 열어도 파일을 또 고르지 않아도 돼요(탭을 닫으면 사라져요).
+const analyzedFiles = new Map();
 
 const number = (value) => new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 3 }).format(value);
 const point = (value) => `(${number(value.x)}, ${number(value.y)})`;
@@ -76,6 +82,7 @@ function setProgressPercent(percent) {
   progressValue = Math.max(progressValue, Math.min(100, Math.round(percent)));
   progressPart("percent").textContent = `${progressValue}%`;
   progressPart("fill").style.width = `${progressValue}%`;
+  progressPart("fill").classList.toggle("done", progressValue >= 100);
   progressPart("track").setAttribute("aria-valuenow", String(progressValue));
 }
 function startProgress(estimated, prefix = "") {
@@ -432,7 +439,16 @@ function openSaved(id, resultType = "analysis") {
   }
   if (resultType === "analysis" && entry.kind !== "review") {
     activeAnalysisEntry = entry;
-    activeAnalysisFile = chosenFile && entry.fingerprint && chosenFingerprint === entry.fingerprint ? chosenFile : null;
+    activeAnalysisFile = (entry.fingerprint && analyzedFiles.get(entry.fingerprint)) || null;
+    if (!activeAnalysisFile && entry.fingerprint) {
+      // 새로고침 뒤에는 이 브라우저에 보관한 원본 PDF를 찾아 와서 파일을 다시 고르지 않게 해요.
+      loadAnalyzedFile(entry.fingerprint).then((stored) => {
+        if (!stored || activeAnalysisEntry !== entry || activeAnalysisFile) return;
+        analyzedFiles.set(entry.fingerprint, stored);
+        activeAnalysisFile = stored;
+        updateFeedbackAction();
+      });
+    }
   }
   showReview(false, entry.fileName);
   updateFeedbackAction();
@@ -449,7 +465,7 @@ function showFile(file) {
   chosenFile = ["dxf", "pdf"].includes(extension) ? file : null;
   if (!chosenFile) {
     fileInput.value = "";
-    $("#read-error").textContent = "DXF 또는 PDF 파일을 선택해 주세요.";
+    $("#read-error").textContent = "PDF 파일을 선택해 주세요.";
   }
   renderFile();
   checkSavedMatch(chosenFile);
@@ -787,7 +803,7 @@ startButton.addEventListener("click", async () => {
   try {
     await new Promise((resolve) => setTimeout(resolve, 0));
     const buffer = await chosenFile.arrayBuffer();
-    if (!buffer.byteLength) throw new Error("빈 파일이에요. 내용이 있는 DXF 또는 PDF를 선택해 주세요.");
+    if (!buffer.byteLength) throw new Error("빈 파일이에요. 내용이 있는 PDF를 선택해 주세요.");
     result = chosenFile.name.toLowerCase().endsWith(".dxf")
       ? readDxf(buffer)
       : await readPdf(buffer, reportProgress);
@@ -821,8 +837,11 @@ agentStartButton.addEventListener("click", async () => {
       const challenge = await requestHostedChallenge(agentController.signal);
       hostedTokens = await getHostedStudioToken("analysis", challenge, { signal: agentController.signal });
     }
-    analysisResponse = await analyzeDrawingWithStudio(file, {
+    // 로컬에 팀장 연결이 있으면 분석 요청도 팀장이 받아 ②에게 맡긴다.
+    const runAnalysis = !hostedMode && leadConnected ? leadDrawingWithStudio : analyzeDrawingWithStudio;
+    analysisResponse = await runAnalysis(file, {
       hostedAccess: hostedTokens,
+      task: "analysis",
       signal: agentController.signal,
       onProgress: reportProgress,
     });
@@ -841,6 +860,7 @@ agentStartButton.addEventListener("click", async () => {
       kind: "analysis",
     };
     activeAnalysisFile = file;
+    if (fingerprint) { analyzedFiles.set(fingerprint, file); saveAnalyzedFile(fingerprint, file); }
     if (saved) {
       renderHistory();
       await checkSavedMatch(file);
@@ -918,6 +938,7 @@ codeReadButton.addEventListener("click", async () => {
     const saved = analysisHistory.save({ fileName: file.name, fingerprint, response });
     activeAnalysisEntry = saved ?? { id: null, fileName: file.name, fingerprint: fingerprint ?? null, response, kind: "analysis" };
     activeAnalysisFile = file;
+    if (fingerprint) { analyzedFiles.set(fingerprint, file); saveAnalyzedFile(fingerprint, file); }
     if (saved) {
       renderHistory();
       await checkSavedMatch(file);
@@ -944,10 +965,10 @@ function showCodeReview(response, file, timing = "") {
   agentResultView.reset();
   agentResultView.showResponse(JSON.stringify(codeReview), response, file);
   codeReviewShown = true;
-  const count = (kind) => codeReview.findings.filter((finding) => finding.classification === kind).length;
+  // 피드백은 ‘피드백 받기’를 누르기 전에는 보여 주지 않아요.
+  $("#review-feedback-part").hidden = true;
   $("#agent-result-progress").textContent =
-    `PDF를 코드로 읽고 점검했어요(${timing}틀림 ${count("틀림")}건·확인 필요 ${count("확인 필요")}건·질문 ${count("질문")}개`
-    + `${problemSheetInfo ? `, 문제지 ‘${problemSheetFile?.name ?? ""}’와 대조` : ""}). 더 자세한 검토는 ‘피드백 받기’(선택).`;
+    `PDF를 코드로 읽었어요(${timing.replace(/, $/, "")}${problemSheetInfo ? `, 문제지 ‘${problemSheetFile?.name ?? ""}’ 읽음` : ""}). 피드백은 ‘피드백 받기’를 누르면 나와요.`;
 }
 
 function refreshCodeReview() {
@@ -1027,6 +1048,7 @@ async function requestFeedback(file = activeAnalysisFile) {
       analysisResponse: activeAnalysisEntry.response,
       reviewResponse,
     });
+    $("#review-feedback-part").hidden = false;
     agentResultView.showResponse(reviewResponse, activeAnalysisEntry.response, file, {
       onVerdict: memoryEntry ? (findingId, verdict) => reviewMemory.setVerdict(memoryEntry.id, findingId, verdict) : null,
     });
@@ -1147,11 +1169,14 @@ $("#clear-memory").addEventListener("click", () => {
 $("#clear-history").addEventListener("click", () => {
   if (busy || !window.confirm("저장된 분석·검토 결과를 모두 삭제할까요? 되돌릴 수 없어요.")) return;
   analysisHistory.clear();
+  clearAnalyzedFiles();
   hideSavedMatch();
   renderHistory();
 });
 renderHistory();
 await configureHostedConnection();
+// 시험용 격리 모드(?history=…)에서는 로컬 팀장 연결을 쓰지 않아요.
+if (!hostedMode && !historyName) leadConnected = await hasLeadConnection();
 const revealObserver = new IntersectionObserver((entries) => {
   entries.forEach((entry) => {
     if (!entry.isIntersecting) return;
