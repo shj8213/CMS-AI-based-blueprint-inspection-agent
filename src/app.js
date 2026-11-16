@@ -837,9 +837,8 @@ agentStartButton.addEventListener("click", async () => {
       const challenge = await requestHostedChallenge(agentController.signal);
       hostedTokens = await getHostedStudioToken("analysis", challenge, { signal: agentController.signal });
     }
-    // 로컬에 팀장 연결이 있으면 분석 요청도 팀장이 받아 ②에게 맡긴다.
-    const runAnalysis = !hostedMode && leadConnected ? leadDrawingWithStudio : analyzeDrawingWithStudio;
-    analysisResponse = await runAnalysis(file, {
+    // 분석은 팀장을 거치지 않고 ②에 직접 보내요(이전 방식).
+    analysisResponse = await analyzeDrawingWithStudio(file, {
       hostedAccess: hostedTokens,
       task: "analysis",
       signal: agentController.signal,
@@ -1080,6 +1079,11 @@ async function requestFeedback(file = activeAnalysisFile) {
           : "③ 피드백을 표시하지 못했어요. 연결 상태를 확인한 뒤 다시 시도해 주세요.";
     if (!(error instanceof StudioConnectionError) && !(error instanceof AgentResultError)) {
       console.error("③ 피드백 처리 실패:", error instanceof Error ? error.name : typeof error);
+    }
+    // ③이 실패해도 코드 점검으로 찾은 틀린 곳은 보여 줘요.
+    if (codeReviewShown && activeAnalysisEntry && isCodeReadResponse(activeAnalysisEntry.response)) {
+      $("#review-feedback-part").hidden = false;
+      $("#agent-result-progress").textContent += " 아래에는 코드 점검 결과만 보여요.";
     }
     updateFeedbackAction();
   } finally {
